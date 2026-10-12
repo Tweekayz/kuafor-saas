@@ -7,13 +7,13 @@ export const site = {
   /** Demo butonunun açtığı salon (salons.slug). */
   demoSalonSlug: process.env.NEXT_PUBLIC_DEMO_SALON_SLUG ?? "randevu",
 
-  // TODO: gerçek iletişim bilgilerinizi yazın. null olan satır sayfada gösterilmez.
+  // null olan satır sayfada gösterilmez. Numaralar tırnak içinde yazılmalıdır.
   contact: {
-    email: "iletisim@ornek.com" as string | null,
+    email: "aytac.altac98@gmail.com" as string | null,
     /** Görünen biçimiyle, örn. "0532 123 45 67". */
-    phone: null as string | null,
+    phone: "0537 349 79 98" as string | null,
     /** Uluslararası biçimde, yalnızca rakam, örn. "905321234567". */
-    whatsapp: null as string | null,
+    whatsapp: "905373497998" as string | null,
   },
 
   /** Aylık fiyat metni, örn. "₺990". null ise "Salonunuza özel fiyat" gösterilir. */
