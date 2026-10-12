@@ -125,6 +125,8 @@ export type PanelBarber = {
 /** Personelin bir gündeki mesaisi; saatler salonun yerel saatinde "HH:MM:SS". */
 export type BarberWorkingHours = {
   barber_id: string;
+  /** 0 = Pazar */
+  day_of_week: number;
   start_time: string;
   end_time: string;
 };
@@ -189,6 +191,8 @@ export type RescheduledAppointment = {
   starts_at: string;
   ends_at: string;
 };
+
+export type PaymentMethod = "cash" | "card" | "transfer";
 
 export type EarningsPayout = {
   item_count: number;

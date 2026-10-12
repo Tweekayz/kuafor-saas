@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { getExpenses, getPaymentBreakdown } from "@/lib/business/queries";
 import { formatDay, formatMoney, monthRange, todayInZone } from "@/lib/format";
 import {
   getBarberPerformance,
@@ -12,12 +13,14 @@ import { isIsoDate } from "@/lib/panel/validation";
 
 import {
   DateNav,
+  MigrationNotice,
   NoAccess,
   PageHeader,
   PageSkeleton,
   StatTile,
   dayTitle,
 } from "../_components/page-parts";
+import { Expenses } from "./expenses";
 import { PayoutButton } from "./payout-button";
 
 export const metadata: Metadata = {
@@ -43,21 +46,32 @@ async function Finance({ searchParams }: Pick<PageProps<"/panel/finans">, "searc
   const day = isIsoDate(requestedDay) ? requestedDay : today;
   const month = monthRange(day);
 
-  const [daily, monthly, performance, balances] = await Promise.all([
+  const [daily, monthly, performance, balances, payments, expenses] = await Promise.all([
     getSalonDashboard(salonId, { from: day, to: day }),
     getSalonDashboard(salonId, month),
     getBarberPerformance(salonId, month),
     getCommissionBalances(salonId),
+    getPaymentBreakdown(salonId, month, timezone),
+    getExpenses(salonId, month),
   ]);
   if (!daily || !monthly) return <NoAccess />;
 
   const unpaidByBarber = new Map(balances.map((b) => [b.barber_id, b]));
   const money = (amount: number) => formatMoney(amount, currency);
   const monthLabel = formatDay(day, { month: "long", year: "numeric" });
+  const expenseTotal = (expenses ?? []).reduce((sum, expense) => sum + expense.amount, 0);
+  const paymentRows: [string, number][] = payments
+    ? [
+        ["Nakit", payments.cash],
+        ["Kart", payments.card],
+        ["Havale / EFT", payments.transfer],
+        ["Belirtilmedi", payments.unspecified],
+      ]
+    : [];
 
   return (
     <>
-      <PageHeader title="Ciro & Prim Raporları" description={dayTitle(day)}>
+      <PageHeader title="Finans & Kasa" description={dayTitle(day)}>
         <DateNav basePath="/panel/finans" membership={membership} day={day} today={today} />
       </PageHeader>
 
@@ -111,6 +125,59 @@ async function Finance({ searchParams }: Pick<PageProps<"/panel/finans">, "searc
             detail={`${money(monthly.deposits_collected)} kapora tahsil edildi`}
           />
         </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-lg font-medium">Gelir – gider ({monthLabel})</h2>
+        {expenses === null ? (
+          <MigrationNotice feature="Gider takibi ve ödeme kırılımı" />
+        ) : (
+          <>
+            <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatTile label="Ciro" value={money(monthly.revenue)} />
+              <StatTile label="Prim" value={money(monthly.commission_total)} />
+              <StatTile
+                label="Gider"
+                value={money(expenseTotal)}
+                detail={`${expenses.length} kayıt`}
+              />
+              <StatTile
+                label="Net kalan"
+                value={money(monthly.revenue - monthly.commission_total - expenseTotal)}
+                detail="Ciro − prim − gider"
+              />
+            </div>
+
+            {payments && (
+              <>
+                <h3 className="mt-8 font-medium">Ödeme yöntemine göre ciro</h3>
+                <dl className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  {paymentRows.map(([label, amount]) => (
+                    <div
+                      key={label}
+                      className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                    >
+                      <dt className="text-sm text-zinc-500">{label}</dt>
+                      <dd className="mt-1 text-xl font-semibold tabular-nums">{money(amount)}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Ödeme yöntemi, randevu “tamamlandı” işaretlenirken seçilir. Bu özellikten önce
+                  kapatılan randevular “Belirtilmedi” altında görünür.
+                </p>
+              </>
+            )}
+
+            <h3 className="mt-8 mb-3 font-medium">Giderler</h3>
+            <Expenses
+              salonId={salonId}
+              currency={currency}
+              defaultDate={day}
+              expenses={expenses}
+            />
+          </>
+        )}
       </section>
 
       <section className="mt-10">

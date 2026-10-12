@@ -30,6 +30,23 @@ export function minutesInZone(value: string | Date, timeZone: string): number {
   return get("hour") * 60 + get("minute");
 }
 
+/**
+ * Salonun yerel takvim günü + gün içi dakikayı UTC zaman damgasına çevirir
+ * (ör. İstanbul 2026-10-12 10:00 -> "2026-10-12T07:00:00.000Z").
+ */
+export function zonedToIso(isoDate: string, minutes: number, timeZone: string): string {
+  const wanted = Date.parse(`${isoDate}T00:00:00Z`) + minutes * 60_000;
+  let guess = wanted;
+  // Tahmini anın o saat dilimindeki "duvar saati" ile istenen arasındaki farkı kapat.
+  for (let i = 0; i < 2; i++) {
+    const wall =
+      Date.parse(`${dateInZone(new Date(guess), timeZone)}T00:00:00Z`) +
+      minutesInZone(new Date(guess), timeZone) * 60_000;
+    guess += wanted - wall;
+  }
+  return new Date(guess).toISOString();
+}
+
 /** "09:30:00" -> 570 */
 export function timeToMinutes(time: string): number {
   const [h, m] = time.split(":").map(Number);

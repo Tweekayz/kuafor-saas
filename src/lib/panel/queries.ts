@@ -184,18 +184,14 @@ export async function getSalonBarbers(salonId: string): Promise<PanelBarber[]> {
   return data;
 }
 
-/** Haftanın bir günü için mesai saatleri (0 = Pazar). Satırı olmayan personel o gün çalışmıyor. */
-export async function getWorkingHours(
-  salonId: string,
-  dayOfWeek: number,
-): Promise<BarberWorkingHours[]> {
+/** Salonun tüm haftalık mesai satırları (0 = Pazar). Satırı olmayan gün çalışılmıyor. */
+export async function getWorkingHours(salonId: string): Promise<BarberWorkingHours[]> {
   assertUuid(salonId, "salonId");
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("working_hours")
-    .select("barber_id, start_time, end_time")
-    .eq("salon_id", salonId)
-    .eq("day_of_week", dayOfWeek);
+    .select("barber_id, day_of_week, start_time, end_time")
+    .eq("salon_id", salonId);
   if (error) throw new Error(`working_hours: ${error.message}`, { cause: error });
   return data;
 }

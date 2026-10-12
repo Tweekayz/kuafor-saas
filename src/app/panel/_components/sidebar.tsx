@@ -11,8 +11,8 @@ type NavItem = {
   href: string;
   label: string;
   icon: string;
-  /** Yalnızca sahip ve yönetici görür. */
-  adminOnly: boolean;
+  /** Kim görür: tüm ekip, ön büro (sahip, yönetici, resepsiyon) ya da yalnızca yönetici. */
+  access: "member" | "frontdesk" | "admin";
   /** Seçili gün (?gun=) bu sayfaya taşınır. */
   keepsDay?: boolean;
 };
@@ -20,50 +20,72 @@ type NavItem = {
 const NAV: NavItem[] = [
   {
     href: "/panel",
-    label: "Genel Bakış",
+    label: "Takvim & Randevular",
     icon: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z",
-    adminOnly: false,
+    access: "member",
     keepsDay: true,
   },
   {
     href: "/panel/finans",
-    label: "Ciro & Prim Raporları",
+    label: "Finans & Kasa",
     icon: "M3 3v18h18M7 15l4-4 3 3 5-6",
-    adminOnly: true,
+    access: "admin",
     keepsDay: true,
   },
   {
+    href: "/panel/musteriler",
+    label: "Müşteriler",
+    icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-6h5m-5 4h5m-3 4h3",
+    access: "frontdesk",
+  },
+  {
     href: "/panel/hizmetler",
-    label: "Hizmet Yönetimi",
+    label: "Hizmetler & Fiyatlar",
     icon: "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12",
-    adminOnly: true,
+    access: "admin",
   },
   {
     href: "/panel/personel",
-    label: "Personel & Mesai",
+    label: "Personel Yönetimi",
     icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
-    adminOnly: true,
+    access: "admin",
+  },
+  {
+    href: "/panel/stok",
+    label: "Stok & Ürünler",
+    icon: "M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8",
+    access: "frontdesk",
+  },
+  {
+    href: "/panel/otomasyon",
+    label: "Otomasyonlar",
+    icon: "M13 2 4 14h7l-1 8 9-12h-7l1-8Z",
+    access: "admin",
   },
   {
     href: "/panel/ayarlar",
     label: "Salon Ayarları",
     icon: "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
-    adminOnly: true,
+    access: "admin",
   },
 ];
 
+const ACCESS_ROLES: Record<NavItem["access"], readonly string[]> = {
+  member: ["owner", "manager", "receptionist", "barber"],
+  frontdesk: ["owner", "manager", "receptionist"],
+  admin: ["owner", "manager"],
+};
 export function Sidebar({ memberships }: { memberships: PanelMembership[] }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const membership =
     memberships.find((m) => m.salon_slug === searchParams.get("salon")) ?? memberships[0];
-  const isAdmin = membership?.role === "owner" || membership?.role === "manager";
   const day = searchParams.get("gun");
 
   // Salonu olmayan kullanıcı yalnızca salon oluşturma adımını görür.
   const items = NAV.filter((item) =>
-    membership ? !item.adminOnly || isAdmin : item.href === "/panel/ayarlar",
+    membership ? ACCESS_ROLES[item.access].includes(membership.role) : item.href === "/panel/ayarlar",
   );
 
   function hrefFor(item: NavItem, slug: string | undefined = membership?.salon_slug) {

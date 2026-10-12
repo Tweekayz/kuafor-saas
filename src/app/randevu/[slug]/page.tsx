@@ -4,7 +4,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 
 import { getSalonCatalog } from "@/lib/booking/queries";
-import { todayInZone } from "@/lib/format";
+import { minutesInZone, todayInZone } from "@/lib/format";
+import { closedWeekdays, firstOpenDay } from "@/lib/schedule";
 
 import { BookingWizard } from "./booking-wizard";
 
@@ -29,9 +30,19 @@ async function Booking({ params }: Pick<PageProps<"/randevu/[slug]">, "params">)
 
   // "Bugün" istek anına bağlıdır; salonun saat dilimine göre hesaplanır.
   await connection();
-  const today = todayInZone(catalog.salon.timezone);
-
   const { salon } = catalog;
+  const today = todayInZone(salon.timezone);
+
+  // Kapanış saati geçtiyse ya da salon bugün kapalıysa takvim bir sonraki
+  // çalışma gününde açılır.
+  const staffHours = catalog.barbers.map((b) => b.hours);
+  const initialDate = firstOpenDay(
+    today,
+    minutesInZone(new Date(), salon.timezone),
+    staffHours,
+    salon.max_booking_days_ahead,
+  );
+
   const location = [salon.address, salon.city].filter(Boolean).join(", ");
 
   return (
@@ -57,7 +68,12 @@ async function Booking({ params }: Pick<PageProps<"/randevu/[slug]">, "params">)
           )}
         </p>
       ) : (
-        <BookingWizard catalog={catalog} today={today} />
+        <BookingWizard
+          catalog={catalog}
+          today={today}
+          initialDate={initialDate}
+          closedWeekdays={closedWeekdays(staffHours)}
+        />
       )}
     </>
   );

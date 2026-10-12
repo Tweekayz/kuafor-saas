@@ -9,11 +9,16 @@ Kuaför ve güzellik salonları için online randevu ve salon yönetimi. Next.js
 | `/` | Herkes | Tanıtım sayfası |
 | `/randevu/[slug]` | Herkes | Salonun online randevu akışı |
 | `/giris` | Herkes | Salon paneline giriş |
-| `/panel` | Salon ekibi | Günlük randevu takvimi |
-| `/panel/finans` | Sahip, yönetici | Ciro ve prim raporları |
-| `/panel/hizmetler` | Sahip, yönetici | Hizmet yönetimi |
-| `/panel/personel` | Sahip, yönetici | Personel, hizmet eşleştirme, çalışma saatleri |
-| `/panel/ayarlar` | Sahip, yönetici | Salon bilgileri; salonu olmayan hesap için salon oluşturma |
+| `/panel` | Salon ekibi | Takvim: gün ve hafta görünümü, sürükle-bırak erteleme |
+| `/panel/finans` | Sahip, yönetici | Ciro, prim, ödeme yöntemi kırılımı, giderler |
+| `/panel/musteriler` | Sahip, yönetici, resepsiyon | Müşteri kartları, geçmiş, etiketler, notlar |
+| `/panel/hizmetler` | Sahip, yönetici | Hizmet ve fiyat yönetimi |
+| `/panel/personel` | Sahip, yönetici | Personel, hizmet eşleştirme, mesai, mola, izinler |
+| `/panel/stok` | Sahip, yönetici, resepsiyon | Ürün stoğu ve kritik stok uyarıları |
+| `/panel/otomasyon` | Sahip, yönetici | Mesaj şablonları ve kuyruk (gönderim sağlayıcısı bağlı değil) |
+| `/panel/ayarlar` | Sahip, yönetici | Salon bilgileri, randevu kuralları, alan adı; salon oluşturma |
+
+Salona özel adresler: `<slug>.<NEXT_PUBLIC_ROOT_DOMAIN>` ya da salonun kendi alan adı (`salons.custom_domain`) ile gelen ana sayfa isteği `src/proxy.ts` tarafından `/randevu/<slug>` sayfasına yönlendirilir (rewrite). Yerelde `http://<slug>.localhost:3000` ile denenebilir. Canlıda alan adının ayrıca Vercel projesine eklenmesi gerekir (subdomain için wildcard `*.alanadi.com`).
 
 ## Ortam değişkenleri
 
@@ -39,7 +44,7 @@ npm run build
 
 ## Veritabanı
 
-Şema ve fonksiyonlar `supabase/migrations/` altındadır; sırayla Supabase SQL Editor'de ya da `supabase db push` ile uygulanır. Yetkilendirme veritabanındadır (RLS + fonksiyon içi rol kontrolü).
+Şema ve fonksiyonlar `supabase/migrations/` altındadır; sırayla Supabase SQL Editor'de ya da `supabase db push` ile uygulanır. `20261013000000_business_modules.sql` uygulanmadan gider, ödeme yöntemi, stok, otomasyon ayarları ve özel alan adı bölümleri "veritabanı güncellemesi gerekiyor" uyarısı gösterir; sitenin geri kalanı çalışır. Yetkilendirme veritabanındadır (RLS + fonksiyon içi rol kontrolü).
 
 ## İlk kurulum
 

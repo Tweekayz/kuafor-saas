@@ -2,6 +2,7 @@ import "server-only";
 
 import { cacheLife, cacheTag } from "next/cache";
 
+import { timeToMinutes } from "@/lib/format";
 import { createPublicClient } from "@/lib/supabase/public";
 
 import type { CatalogBarber, SalonCatalog } from "./types";
@@ -51,7 +52,10 @@ export async function getSalonCatalog(slug: string): Promise<SalonCatalog | null
       .from("barber_services")
       .select("barber_id, service_id, duration_override, price_override")
       .eq("salon_id", salon.data.id),
-    supabase.from("working_hours").select("barber_id").eq("salon_id", salon.data.id),
+    supabase
+      .from("working_hours")
+      .select("barber_id, day_of_week, start_time, end_time")
+      .eq("salon_id", salon.data.id),
   ]);
   for (const result of [services, barbers, barberServices, workingHours]) {
     if (result.error) throw new Error(result.error.message, { cause: result.error });
@@ -62,7 +66,7 @@ export async function getSalonCatalog(slug: string): Promise<SalonCatalog | null
   const activeServiceIds = new Set((services.data ?? []).map((s) => s.id));
   const catalogBarbers: CatalogBarber[] = (barbers.data ?? [])
     .filter((b) => scheduled.has(b.id))
-    .map((b) => ({ ...b, services: {} }));
+    .map((b) => ({ ...b, services: {}, hours: {} }));
   const barberById = new Map(catalogBarbers.map((b) => [b.id, b]));
 
   for (const row of barberServices.data ?? []) {
@@ -72,6 +76,16 @@ export async function getSalonCatalog(slug: string): Promise<SalonCatalog | null
       duration: row.duration_override,
       price: row.price_override,
     };
+  }
+
+  for (const row of workingHours.data ?? []) {
+    const barber = barberById.get(row.barber_id);
+    if (barber) {
+      barber.hours[row.day_of_week] = {
+        start: timeToMinutes(row.start_time),
+        end: timeToMinutes(row.end_time),
+      };
+    }
   }
 
   // Hiçbir aktif personelin vermediği hizmet için randevu alınamaz; gösterme.

@@ -9,6 +9,7 @@ import type {
   AppointmentStatusChange,
   EarningsPayout,
   PanelErrorCode,
+  PaymentMethod,
   RescheduledAppointment,
   SettableAppointmentStatus,
 } from "./types";
@@ -77,6 +78,32 @@ export async function updateAppointmentStatus(
     p_status: status,
     p_reason: reason ?? null,
   });
+}
+
+const PAYMENT_METHODS: readonly PaymentMethod[] = ["cash", "card", "transfer"];
+
+/**
+ * Randevuyu tamamlandı olarak işaretler ve tahsilat yöntemini kaydeder.
+ * Ödeme yöntemi sütunu henüz yoksa (veritabanı güncellemesi uygulanmadıysa)
+ * randevu yine tamamlanır; yöntem kaydedilmez.
+ */
+export async function completeAppointment(
+  appointmentId: string,
+  method: PaymentMethod,
+): Promise<ActionResult<AppointmentStatusChange>> {
+  if (!PAYMENT_METHODS.includes(method)) return invalid("Geçersiz ödeme yöntemi");
+
+  const result = await updateAppointmentStatus(appointmentId, "completed");
+  if (!result.ok) return result;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("appointments")
+    .update({ payment_method: method })
+    .eq("id", appointmentId);
+  if (error) console.error("completeAppointment: payment_method not saved", error.message);
+
+  return result;
 }
 
 /**

@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 
+import { saveBreak } from "@/lib/business/actions";
 import { formatDuration, formatMoney } from "@/lib/format";
 import {
   deleteBarber,
@@ -100,6 +101,7 @@ export function BarberCard({
         <ProfileForm salonId={salonId} barber={barber} />
         <ServicesForm salonId={salonId} currency={currency} barber={barber} services={services} />
         <HoursForm salonId={salonId} barber={barber} />
+        <BreakForm salonId={salonId} barber={barber} />
       </div>
     </details>
   );
@@ -270,6 +272,47 @@ function ServicesForm({
           </div>
         </>
       )}
+    </form>
+  );
+}
+
+function BreakForm({ salonId, barber }: { salonId: string; barber: SettingsBarber }) {
+  const [state, action, pending] = useActionState(saveBreak, null);
+
+  return (
+    <form action={action}>
+      <input type="hidden" name="salon_id" value={salonId} />
+      <input type="hidden" name="barber_id" value={barber.id} />
+      <h4 className="text-sm font-semibold">Mola</h4>
+      <p className="mt-1 text-xs text-zinc-500">
+        Mola saatinde randevu alınamaz. Mola, personelin çalıştığı her güne uygulanır.
+      </p>
+      <div className="mt-3 grid grid-cols-[1fr_6.5rem_6.5rem] items-center gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="break_on" defaultChecked={barber.break !== null} />
+          Günlük mola var
+        </label>
+        <input
+          type="time"
+          name="break_start"
+          defaultValue={barber.break?.start ?? "13:00"}
+          aria-label="Mola başlangıç"
+          className={inputClass}
+        />
+        <input
+          type="time"
+          name="break_end"
+          defaultValue={barber.break?.end ?? "14:00"}
+          aria-label="Mola bitiş"
+          className={inputClass}
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-3">
+        <FormMessage state={state} />
+        <button type="submit" disabled={pending} className={primaryButton}>
+          {pending ? "Kaydediliyor…" : "Molayı kaydet"}
+        </button>
+      </div>
     </form>
   );
 }

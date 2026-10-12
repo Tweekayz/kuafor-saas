@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { PricingPlans } from "@/components/pricing-plans";
 import { ThemeToggle } from "@/components/theme";
-import { site } from "@/lib/site";
+import { site, whatsappLink } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: `${site.name} — Kuaför ve güzellik salonları için online randevu ve takip`,
@@ -38,6 +39,7 @@ const icons = {
   wallet:
     "M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2H5a2 2 0 0 1-2-2Zm14 7h.01",
   mail: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 1 9 7 9-7",
+  pin: "M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.900 7 11 7 11Zm0-8.500a2.500 2.500 0 1 0 0-5 2.500 2.500 0 0 0 0 5Z",
   phone:
     "M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z",
 };
@@ -120,10 +122,10 @@ const features = [
   {
     title: "Dijital Müşteri Kartı",
     description:
-      "Müşterinizin ziyaret geçmişi, özel notları, alerjileri ve boya formülleri tek kartta. Kim karşılarsa karşılasın, müşterinizi tanıyarak karşılar.",
-    points: ["Ziyaret ve harcama geçmişi", "Boya formülü kayıtları", "Personel notları"],
+      "Müşterinizin ziyaret geçmişi, toplam harcaması, özel notları ve alerjileri tek kartta. Kim karşılarsa karşılasın, müşterinizi tanıyarak karşılar.",
+    points: ["Ziyaret ve harcama geçmişi", "VIP ve düzenli müşteri etiketleri", "Personel notları"],
     icon: icons.card,
-    soon: true,
+    soon: false,
   },
 ];
 
@@ -164,16 +166,18 @@ const faq = [
   ],
 ];
 
-const included = [
-  "Salonunuza özel online randevu sayfası",
-  "Personel bazında günlük takvim ve çalışma saatleri",
-  "Hizmet, süre ve fiyat yönetimi",
-  "Günlük ve aylık ciro, personel prim raporları",
-  "Sahip, yönetici, resepsiyon ve personel rolleri",
-];
-
 export default function Home() {
   const { contact } = site;
+  const whatsappHref = whatsappLink();
+  // Deneme butonları WhatsApp'ta paket adıyla hazır mesaj açar; hat yoksa iletişim bölümüne iner.
+  const trialLinks = Object.fromEntries(
+    site.plans.map((plan) => [
+      plan.name,
+      whatsappLink(
+        `Merhaba, ${site.name} ${plan.name} paketini ${site.trialDays} gün ücretsiz denemek istiyorum.`,
+      ) ?? "#iletisim",
+    ]),
+  );
 
   return (
     <div className="flex flex-1 flex-col">
@@ -474,84 +478,46 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Fiyat ve iletişim */}
-        <section id="fiyat" className="scroll-mt-20 pb-16 sm:pb-24">
+        {/* Fiyatlandırma */}
+        <section id="fiyat" className="scroll-mt-20 pb-16 sm:pb-20">
           <div className={container}>
-            <p className={eyebrow}>Fiyat ve iletişim</p>
-            <h2 className={sectionTitle}>Salonunuzu birlikte konuşalım</h2>
+            <p className={eyebrow}>Fiyatlandırma</p>
+            <h2 className={sectionTitle}>Salonunuzun büyüklüğüne göre paket seçin</h2>
+            <p className={`mt-4 max-w-2xl ${muted}`}>
+              Her paketi {site.trialDays} gün ücretsiz deneyebilirsiniz. Yıllık ödemede 2 ay bizden.
+            </p>
+            <div className="mt-8">
+              <PricingPlans plans={site.plans} trialDays={site.trialDays} trialLinks={trialLinks} />
+            </div>
+            <p className="mt-4 text-sm text-zinc-500">
+              Denemeyi başlatmak için paketin altındaki butona tıklayıp bize yazmanız yeterli.
+            </p>
+          </div>
+        </section>
 
-            <div className="mt-10 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-zinc-200 p-8 dark:border-zinc-800">
-                <h3 className="text-lg font-semibold">Pakete dahil olanlar</h3>
-                {site.monthlyPrice ? (
-                  <p className="mt-4">
-                    <span className="text-4xl font-semibold tracking-tight tabular-nums">
-                      {site.monthlyPrice}
-                    </span>
-                    <span className="text-zinc-500"> / ay</span>
-                  </p>
-                ) : (
-                  <p className="mt-4 text-2xl font-semibold tracking-tight">
-                    Salonunuza özel fiyat
-                  </p>
+        {/* İletişim */}
+        <section id="iletisim" className="scroll-mt-20 pb-16 sm:pb-24">
+          <div className={container}>
+            <div className="grid gap-8 rounded-3xl bg-zinc-100 p-8 sm:p-12 lg:grid-cols-[1fr_1.1fr] dark:bg-zinc-900">
+              <div>
+                <p className={eyebrow}>İletişim</p>
+                <h2 className={sectionTitle}>Satış ve destek hattı</h2>
+                <p className={`mt-4 ${muted}`}>
+                  Paketler, deneme süresi ve salonunuzun kurulumu hakkında her sorunuz için bize
+                  yazın. En hızlı yanıtı WhatsApp&apos;tan alırsınız.
+                </p>
+                {whatsappHref && (
+                  <a
+                    href={whatsappHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-6 py-3 font-medium text-white transition-colors hover:bg-emerald-700"
+                  >
+                    <WhatsAppIcon />
+                    WhatsApp Satış ve Destek Hattı
+                  </a>
                 )}
-                <p className="mt-2 text-sm text-zinc-500">
-                  Fiyat bilgisi için bize yazın ya da arayın.
-                </p>
-                <ul className="mt-6 space-y-3">
-                  {included.map((item) => (
-                    <li key={item} className="flex gap-3">
-                      <span aria-hidden="true" className="mt-0.5 text-amber-700 dark:text-amber-400">
-                        <Icon path={icons.check} />
-                      </span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div
-                id="iletisim"
-                className="scroll-mt-20 rounded-2xl bg-zinc-100 p-8 dark:bg-zinc-900"
-              >
-                <h3 className="text-lg font-semibold">Bize ulaşın</h3>
-                <p className={`mt-2 ${muted}`}>
-                  Sorularınız, fiyat teklifi ve salonunuzun kurulumu için size en uygun yoldan
-                  yazın.
-                </p>
-                <ul className="mt-6 space-y-3">
-                  {contact.whatsapp && (
-                    <ContactRow
-                      label="WhatsApp"
-                      href={`https://wa.me/${contact.whatsapp}`}
-                      tone="bg-emerald-600 text-white"
-                      icon={<WhatsAppIcon />}
-                    >
-                      WhatsApp&apos;tan yazın
-                    </ContactRow>
-                  )}
-                  {contact.phone && (
-                    <ContactRow
-                      label="Telefon"
-                      href={`tel:${contact.phone.replace(/\s/g, "")}`}
-                      tone="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      icon={<Icon path={icons.phone} />}
-                    >
-                      {contact.phone}
-                    </ContactRow>
-                  )}
-                  {contact.email && (
-                    <ContactRow
-                      label="E-posta"
-                      href={`mailto:${contact.email}`}
-                      tone="bg-amber-700 text-white dark:bg-amber-500 dark:text-zinc-950"
-                      icon={<Icon path={icons.mail} />}
-                    >
-                      {contact.email}
-                    </ContactRow>
-                  )}
-                </ul>
-                <p className="mt-8 text-sm text-zinc-500">
+                <p className="mt-6 text-sm text-zinc-500">
                   Zaten hesabınız var mı?{" "}
                   <Link
                     href="/giris"
@@ -561,26 +527,95 @@ export default function Home() {
                   </Link>
                 </p>
               </div>
+
+              <ul className="space-y-3 self-center">
+                {whatsappHref && (
+                  <ContactRow
+                    label="WhatsApp"
+                    href={whatsappHref}
+                    tone="bg-emerald-600 text-white"
+                    icon={<WhatsAppIcon />}
+                  >
+                    WhatsApp&apos;tan yazın
+                  </ContactRow>
+                )}
+                {contact.phone && (
+                  <ContactRow
+                    label="Telefon"
+                    href={`tel:${contact.phone.replace(/\s/g, "")}`}
+                    tone="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    icon={<Icon path={icons.phone} />}
+                  >
+                    {contact.phone}
+                  </ContactRow>
+                )}
+                {contact.email && (
+                  <ContactRow
+                    label="E-posta"
+                    href={`mailto:${contact.email}`}
+                    tone="bg-amber-700 text-white dark:bg-amber-500 dark:text-zinc-950"
+                    icon={<Icon path={icons.mail} />}
+                  >
+                    {contact.email}
+                  </ContactRow>
+                )}
+                {contact.address && (
+                  <ContactRow
+                    label="Adres"
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(contact.address)}`}
+                    tone="bg-zinc-300 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100"
+                    icon={<Icon path={icons.pin} />}
+                  >
+                    {contact.address}
+                  </ContactRow>
+                )}
+              </ul>
             </div>
           </div>
         </section>
       </main>
 
       <footer className="border-t border-zinc-200 dark:border-zinc-800">
-        <div
-          className={`${container} flex flex-wrap items-center justify-between gap-4 py-8 text-sm text-zinc-500`}
-        >
-          <p>
-            <span className="font-medium text-foreground">{site.name}</span> — kuaför, berber ve
-            güzellik salonları için online randevu ve takip.
-          </p>
-          <nav aria-label="Alt bilgi" className="flex flex-wrap gap-6">
+        <div className={`${container} grid gap-8 py-10 text-sm sm:grid-cols-[1.4fr_1fr_1fr]`}>
+          <div>
+            <p className="font-semibold">{site.name}</p>
+            <p className="mt-2 max-w-xs text-zinc-500">
+              Kuaför, berber ve güzellik salonları için online randevu ve takip.
+            </p>
+            {whatsappHref && (
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-600 px-4 py-2 font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950"
+              >
+                <WhatsAppIcon />
+                WhatsApp Satış ve Destek Hattı
+              </a>
+            )}
+          </div>
+          <nav aria-label="Alt bilgi" className="flex flex-col gap-2 text-zinc-500">
+            <p className="font-medium text-foreground">Ürün</p>
             <a className="hover:text-foreground" href="#ozellikler">Özellikler</a>
-            <Link className="hover:text-foreground" href={demoHref}>Demo</Link>
-            <a className="hover:text-foreground" href="#sorular">Sorular</a>
-            <a className="hover:text-foreground" href="#iletisim">İletişim</a>
+            <Link className="hover:text-foreground" href={demoHref}>Canlı demo</Link>
+            <a className="hover:text-foreground" href="#fiyat">Fiyatlandırma</a>
+            <a className="hover:text-foreground" href="#sorular">Sık sorulanlar</a>
             <Link className="hover:text-foreground" href="/giris">Giriş Yap</Link>
           </nav>
+          <div className="flex flex-col gap-2 text-zinc-500">
+            <p className="font-medium text-foreground">İletişim</p>
+            {contact.phone && (
+              <a className="hover:text-foreground" href={`tel:${contact.phone.replace(/\s/g, "")}`}>
+                {contact.phone}
+              </a>
+            )}
+            {contact.email && (
+              <a className="hover:text-foreground break-all" href={`mailto:${contact.email}`}>
+                {contact.email}
+              </a>
+            )}
+            {contact.address && <p>{contact.address}</p>}
+          </div>
         </div>
       </footer>
     </div>

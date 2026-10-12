@@ -1,4 +1,5 @@
 import type { AppointmentStatus } from "@/lib/panel/types";
+import type { WeeklyHours } from "@/lib/schedule";
 
 // Kamuya açık randevu akışının tipleri.
 
@@ -17,6 +18,8 @@ export type CatalogBarber = {
   title: string | null;
   /** Verdiği hizmetler; null değerler "hizmetin standart süresi/fiyatı" demektir. */
   services: Record<string, { duration: number | null; price: number | null }>;
+  /** Haftalık mesai; anahtar 0 = Pazar, değerler gün içi dakika. */
+  hours: WeeklyHours;
 };
 
 export type SalonCatalog = {

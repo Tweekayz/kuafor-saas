@@ -2,13 +2,34 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { formatDuration, formatMoney, minutesToLabel } from "@/lib/format";
-import { updateAppointmentStatus } from "@/lib/panel/actions";
+import {
+  formatDuration,
+  formatMoney,
+  minutesToLabel,
+  timeToMinutes,
+  zonedToIso,
+} from "@/lib/format";
+import {
+  completeAppointment,
+  rescheduleAppointment,
+  updateAppointmentStatus,
+} from "@/lib/panel/actions";
 import type {
+  ActionResult,
   AgendaItem,
   AppointmentStatus,
+  PaymentMethod,
   SettableAppointmentStatus,
 } from "@/lib/panel/types";
+
+const PAYMENT_OPTIONS: [PaymentMethod, string][] = [
+  ["cash", "Nakit"],
+  ["card", "Kart"],
+  ["transfer", "Havale / EFT"],
+];
+
+const fieldClass =
+  "rounded-lg border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700";
 
 /** Randevu + salon saatine göre gün içi dakikaları (sunucuda hesaplanır). */
 export type CalendarAppointment = AgendaItem & { startMin: number; endMin: number };
@@ -46,8 +67,8 @@ type Action = { status: SettableAppointmentStatus; label: string; primary?: bool
 function actionsFor(status: AppointmentStatus, canReopen: boolean): Action[] {
   switch (status) {
     case "confirmed":
+      // "Tamamlandı" ödeme yöntemi düğmeleriyle ayrıca gösterilir.
       return [
-        { status: "completed", label: "Tamamlandı", primary: true },
         { status: "no_show", label: "Gelmedi" },
         { status: "cancelled", label: "İptal et" },
       ];
@@ -96,13 +117,18 @@ export function DayCalendar({
   appointments,
   columns,
   currency,
+  timezone,
+  day,
   canReopen,
   nowMin,
 }: {
   appointments: CalendarAppointment[];
   columns: CalendarColumn[];
   currency: string;
-  /** Ön büro (sahip, yönetici, resepsiyon): kapanmış randevuyu geri açabilir. */
+  timezone: string;
+  /** Gösterilen takvim günü, "YYYY-MM-DD". */
+  day: string;
+  /** Ön büro (sahip, yönetici, resepsiyon): kapanmış randevuyu geri açabilir, personeli değiştirebilir. */
   canReopen: boolean;
   /** Salon saatine göre şu an (dakika). Geçmiş gün için 1440, gelecek gün için -1. */
   nowMin: number;
@@ -111,6 +137,8 @@ export function DayCalendar({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [laneFilter, setLaneFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [dragLane, setDragLane] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const active = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show");
@@ -124,6 +152,16 @@ export function DayCalendar({
     dialogRef.current?.showModal();
   }
 
+  /** Detay penceresindeki işlemi çalıştırır; başarılıysa pencereyi kapatır. */
+  function run(action: () => Promise<ActionResult<unknown>>) {
+    setError(null);
+    startTransition(async () => {
+      const result = await action();
+      if (result.ok) dialogRef.current?.close();
+      else setError(result.message);
+    });
+  }
+
   function apply(action: Action) {
     if (!selected) return;
     let reason: string | undefined;
@@ -132,13 +170,39 @@ export function DayCalendar({
       if (answer === null) return;
       reason = answer.trim() || undefined;
     }
-    setError(null);
+    run(() => updateAppointmentStatus(selected.appointment_id, action.status, reason));
+  }
+
+  function reschedule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected) return;
+    const data = new FormData(event.currentTarget);
+    const date = String(data.get("date") ?? "");
+    const time = String(data.get("time") ?? "");
+    const barberId = String(data.get("barber") ?? "");
+    if (!date || !time) return;
+    run(() =>
+      rescheduleAppointment(
+        selected.appointment_id,
+        zonedToIso(date, timeToMinutes(time), timezone),
+        barberId && barberId !== selected.barber_id ? barberId : undefined,
+      ),
+    );
+  }
+
+  /** Sürükle-bırak: randevuyu aynı saatte başka personele taşır. */
+  function moveToLane(appointmentId: string, barberId: string) {
+    setDragLane(null);
+    const appointment = active.find((a) => a.appointment_id === appointmentId);
+    if (!appointment || appointment.barber_id === barberId) return;
+    setMoveError(null);
     startTransition(async () => {
-      const result = await updateAppointmentStatus(selected.appointment_id, action.status, reason);
-      if (result.ok) dialogRef.current?.close();
-      else setError(result.message);
+      const result = await rescheduleAppointment(appointmentId, appointment.starts_at, barberId);
+      if (!result.ok) setMoveError(result.message);
     });
   }
+
+  const movable = selected?.status === "confirmed" || selected?.status === "pending_payment";
 
   if (columns.length === 0) {
     return (
@@ -170,6 +234,21 @@ export function DayCalendar({
         </div>
       )}
 
+      {canReopen && columns.length > 1 && (
+        <p className="mb-3 text-sm text-zinc-500">
+          Bekleyen bir randevuyu başka personelin şeridine sürükleyerek aynı saatte ona
+          aktarabilirsiniz.{isPending && " İşleniyor…"}
+        </p>
+      )}
+      {moveError && (
+        <p
+          role="alert"
+          className="mb-3 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+        >
+          {moveError}
+        </p>
+      )}
+
       <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr))]">
         {visibleColumns.map((column) => (
           <Lane
@@ -179,6 +258,12 @@ export function DayCalendar({
             currency={currency}
             nowMin={nowMin}
             onOpen={open}
+            canDrag={canReopen && columns.length > 1}
+            highlighted={dragLane === column.id}
+            onDragState={(over) =>
+              setDragLane((current) => (over ? column.id : current === column.id ? null : current))
+            }
+            onDropAppointment={(id) => moveToLane(id, column.id)}
           />
         ))}
       </div>
@@ -276,6 +361,76 @@ export function DayCalendar({
               </p>
             )}
 
+            {selected.status === "confirmed" && (
+              <div className="mt-6">
+                <p className="text-sm font-medium">Tamamlandı olarak işaretle</p>
+                <p className="text-xs text-zinc-500">Ödemenin nasıl alındığını seçin.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {PAYMENT_OPTIONS.map(([method, label]) => (
+                    <button
+                      key={method}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => run(() => completeAppointment(selected.appointment_id, method))}
+                      className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {movable && (
+              <form
+                key={selected.appointment_id}
+                onSubmit={reschedule}
+                className="mt-6 border-t border-zinc-200 pt-4 dark:border-zinc-800"
+              >
+                <p className="text-sm font-medium">Ertele / taşı</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    type="date"
+                    name="date"
+                    required
+                    defaultValue={day}
+                    aria-label="Yeni tarih"
+                    className={fieldClass}
+                  />
+                  <input
+                    type="time"
+                    name="time"
+                    required
+                    step={300}
+                    defaultValue={minutesToLabel(selected.startMin)}
+                    aria-label="Yeni saat"
+                    className={fieldClass}
+                  />
+                  {canReopen && columns.length > 1 && (
+                    <select
+                      name="barber"
+                      defaultValue={selected.barber_id}
+                      aria-label="Personel"
+                      className={fieldClass}
+                    >
+                      {columns.map((column) => (
+                        <option key={column.id} value={column.id}>
+                          {column.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    Ertele
+                  </button>
+                </div>
+              </form>
+            )}
+
             <div className="mt-6 flex flex-wrap gap-2">
               {actionsFor(selected.status, canReopen).map((action) => (
                 <button
@@ -306,12 +461,21 @@ function Lane({
   currency,
   nowMin,
   onOpen,
+  canDrag,
+  highlighted,
+  onDragState,
+  onDropAppointment,
 }: {
   column: CalendarColumn;
   appointments: CalendarAppointment[];
   currency: string;
   nowMin: number;
   onOpen: (id: string) => void;
+  canDrag: boolean;
+  /** Üzerinde sürüklenen bir randevu var. */
+  highlighted: boolean;
+  onDragState: (over: boolean) => void;
+  onDropAppointment: (appointmentId: string) => void;
 }) {
   const working = column.workStart !== null && column.workEnd !== null;
   const entries = buildLane(column, appointments, nowMin);
@@ -322,7 +486,19 @@ function Lane({
   return (
     <section
       aria-label={column.name}
-      className="rounded-2xl border border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40"
+      onDragOver={(event) => {
+        if (!canDrag) return;
+        event.preventDefault();
+        onDragState(true);
+      }}
+      onDragLeave={() => onDragState(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDropAppointment(event.dataTransfer.getData("text/plain"));
+      }}
+      className={`rounded-2xl border bg-zinc-50/60 transition-colors dark:bg-zinc-900/40 ${
+        highlighted ? "border-blue-600 ring-1 ring-blue-600" : "border-zinc-200 dark:border-zinc-800"
+      }`}
     >
       <header className="p-4">
         <div className="flex items-center gap-3">
@@ -388,6 +564,7 @@ function Lane({
                   currency={currency}
                   nowMin={nowMin}
                   onOpen={onOpen}
+                  canDrag={canDrag}
                 />
               </li>
             ),
@@ -407,11 +584,13 @@ function AppointmentCard({
   currency,
   nowMin,
   onOpen,
+  canDrag,
 }: {
   appointment: CalendarAppointment;
   currency: string;
   nowMin: number;
   onOpen: (id: string) => void;
+  canDrag: boolean;
 }) {
   const services = a.services.map((s) => s.name).join(", ");
 
@@ -439,6 +618,11 @@ function AppointmentCard({
   return (
     <button
       type="button"
+      draggable={canDrag}
+      onDragStart={(event) => {
+        event.dataTransfer.setData("text/plain", a.appointment_id);
+        event.dataTransfer.effectAllowed = "move";
+      }}
       onClick={() => onOpen(a.appointment_id)}
       className={`flex w-full gap-3 rounded-xl border bg-background p-3 text-left transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-zinc-100 ${
         inProgress

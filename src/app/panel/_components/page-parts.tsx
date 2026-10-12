@@ -32,17 +32,24 @@ export function DateNav({
   membership,
   day,
   today,
+  step = 1,
+  params = {},
 }: {
   basePath: string;
   membership: PanelMembership;
   day: string;
   today: string;
+  /** Ok düğmelerinin atladığı gün sayısı (hafta görünümünde 7). */
+  step?: number;
+  /** Korunacak ek sorgu parametreleri (ör. görünüm). */
+  params?: Record<string, string>;
 }) {
-  const href = (target: string) => `${basePath}?salon=${membership.salon_slug}&gun=${target}`;
+  const href = (target: string) =>
+    `${basePath}?${new URLSearchParams({ salon: membership.salon_slug, ...params, gun: target })}`;
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <Link className={navButton} href={href(addDays(day, -1))} aria-label="Önceki gün">
+      <Link className={navButton} href={href(addDays(day, -step))} aria-label="Önceki">
         ←
       </Link>
       <Link
@@ -52,11 +59,14 @@ export function DateNav({
       >
         Bugün
       </Link>
-      <Link className={navButton} href={href(addDays(day, 1))} aria-label="Sonraki gün">
+      <Link className={navButton} href={href(addDays(day, step))} aria-label="Sonraki">
         →
       </Link>
       <form action={basePath} className="flex items-center gap-2">
         <input type="hidden" name="salon" value={membership.salon_slug} />
+        {Object.entries(params).map(([name, value]) => (
+          <input key={name} type="hidden" name={name} value={value} />
+        ))}
         <input
           type="date"
           name="gun"
@@ -91,6 +101,21 @@ export function StatTile({
       <p className="text-sm text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
       {detail && <p className="mt-1 text-xs text-zinc-500">{detail}</p>}
+    </div>
+  );
+}
+
+/** Modülün veritabanı tabloları henüz oluşturulmamışsa gösterilir. */
+export function MigrationNotice({ feature }: { feature: string }) {
+  return (
+    <div className="mt-6 rounded-xl bg-amber-50 p-5 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+      <p className="font-semibold">{feature} için veritabanı güncellemesi gerekiyor</p>
+      <p className="mt-1">
+        Supabase → SQL Editor&apos;de{" "}
+        <code className="font-mono">supabase/migrations/20261013000000_business_modules.sql</code>{" "}
+        dosyasının içeriğini çalıştırın. Güncelleme yapılana kadar bu bölüm kullanılamaz;
+        sitenin geri kalanı etkilenmez.
+      </p>
     </div>
   );
 }

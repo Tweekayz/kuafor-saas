@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { createBooking } from "@/lib/booking/actions";
-import type { BookingConfirmation, CatalogBarber, SalonCatalog } from "@/lib/booking/types";
-import { addDays, formatDay, formatDuration, formatMoney, formatTime } from "@/lib/format";
+import type { BookingConfirmation, SalonCatalog } from "@/lib/booking/types";
+import {
+  addDays,
+  dayOfWeek,
+  formatDay,
+  formatDuration,
+  formatMoney,
+  formatTime,
+} from "@/lib/format";
 import { createClient } from "@/lib/supabase/browser";
 
 const ANY_BARBER = "any";
-const STEPS = ["Hizmet", "Personel", "Tarih ve saat", "Bilgileriniz"] as const;
 const MAX_DAYS_SHOWN = 90;
 
 type SlotsResult = { key: string; slots: string[]; failed: boolean };
+type SectionRef = React.RefObject<HTMLElement | null>;
 
 const primaryButton =
   "rounded-full bg-zinc-900 px-6 py-3 font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300";
@@ -24,13 +31,35 @@ const optionSelected =
 const inputClass =
   "mt-1 w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2.5 outline-none focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100 dark:focus:ring-zinc-100";
 
-export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today: string }) {
+/** Bölüme yumuşakça kaydırır ve başlığına odaklanır (hareket azaltma tercihine uyar). */
+function scrollToSection(ref: SectionRef) {
+  requestAnimationFrame(() => {
+    const section = ref.current;
+    if (!section) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    section.querySelector<HTMLElement>("h2")?.focus({ preventScroll: true });
+  });
+}
+
+export function BookingWizard({
+  catalog,
+  today,
+  initialDate,
+  closedWeekdays,
+}: {
+  catalog: SalonCatalog;
+  today: string;
+  /** Varsayılan gün: bugün kapandıysa bir sonraki çalışma günü. */
+  initialDate: string;
+  /** Salonun kapalı olduğu hafta günleri (0 = Pazar). */
+  closedWeekdays: number[];
+}) {
   const { salon, services, barbers } = catalog;
 
-  const [step, setStep] = useState(0);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
-  const [barberChoice, setBarberChoice] = useState<string | null>(null);
-  const [date, setDate] = useState(today);
+  const [chosenBarber, setChosenBarber] = useState<string | null>(null);
+  const [date, setDate] = useState(initialDate);
   const [startsAt, setStartsAt] = useState<string | null>(null);
   const [slotsResult, setSlotsResult] = useState<SlotsResult | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
@@ -39,9 +68,17 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
   const [confirmation, setConfirmation] = useState<BookingConfirmation | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  const barberRef = useRef<HTMLElement>(null);
+  const timeRef = useRef<HTMLElement>(null);
+  const infoRef = useRef<HTMLElement>(null);
+
+  const eligibleFor = (ids: string[]) => barbers.filter((b) => ids.every((id) => id in b.services));
   const selectedServices = services.filter((s) => serviceIds.includes(s.id));
-  const eligibleBarbers = barbers.filter((b) => serviceIds.every((id) => id in b.services));
-  const barber: CatalogBarber | null =
+  const eligibleBarbers = eligibleFor(serviceIds);
+  // Tek uygun personel varsa seçim yapmaya gerek yok.
+  const barberChoice =
+    serviceIds.length > 0 && eligibleBarbers.length === 1 ? eligibleBarbers[0].id : chosenBarber;
+  const barber =
     barberChoice && barberChoice !== ANY_BARBER
       ? (barbers.find((b) => b.id === barberChoice) ?? null)
       : null;
@@ -78,11 +115,13 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
     return [...groups.entries()];
   }, [services]);
 
+  const servicesDone = serviceIds.length > 0 && eligibleBarbers.length > 0;
+  const barberDone = servicesDone && barberChoice !== null;
+
   // Boş saatler önbelleğe alınmaz; seçim değiştikçe veritabanından taze okunur.
-  const slotsKey =
-    step === 2 && barberChoice
-      ? `${serviceIds.join(",")}|${barberChoice}|${date}|${reloadCount}`
-      : null;
+  const slotsKey = barberDone
+    ? `${serviceIds.join(",")}|${barberChoice}|${date}|${reloadCount}`
+    : null;
 
   useEffect(() => {
     if (!slotsKey) return;
@@ -120,12 +159,22 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
     setServiceIds(next);
     setStartsAt(null);
     // Seçili personel yeni hizmet setini vermiyorsa seçimi sıfırla.
-    if (barber && !next.every((s) => s in barber.services)) setBarberChoice(null);
+    if (chosenBarber && chosenBarber !== ANY_BARBER) {
+      const chosen = barbers.find((b) => b.id === chosenBarber);
+      if (!chosen || !next.every((s) => s in chosen.services)) setChosenBarber(null);
+    }
+    // İlk hizmet seçilince sıradaki adıma geç; ek hizmet eklerken sayfa yerinde kalır.
+    if (serviceIds.length === 0 && next.length === 1) {
+      const eligible = eligibleFor(next);
+      if (eligible.length === 1) scrollToSection(timeRef);
+      else if (eligible.length > 1) scrollToSection(barberRef);
+    }
   }
 
   function chooseBarber(choice: string) {
-    setBarberChoice(choice);
+    setChosenBarber(choice);
     setStartsAt(null);
+    scrollToSection(timeRef);
   }
 
   function chooseDate(day: string) {
@@ -133,9 +182,9 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
     setStartsAt(null);
   }
 
-  function goTo(nextStep: number) {
-    setError(null);
-    setStep(nextStep);
+  function chooseSlot(slot: string) {
+    setStartsAt(slot);
+    scrollToSection(infoRef);
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -158,13 +207,14 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
 
       if (result.ok) {
         setConfirmation(result.data);
+        window.scrollTo({ top: 0 });
         return;
       }
       setError(result.message);
       if (result.code === "SLOT_TAKEN" || result.code === "SLOT_UNAVAILABLE") {
         setStartsAt(null);
         setReloadCount((n) => n + 1);
-        setStep(2);
+        scrollToSection(timeRef);
       }
     });
   }
@@ -220,53 +270,29 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
           </p>
         ) : (
           <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
-            Randevu bilgileriniz ve hatırlatmalar telefonunuza gönderilecek.
+            Randevu saatinizde salonda olmanız yeterli. Değişiklik için salonla iletişime
+            geçebilirsiniz.
           </p>
         )}
       </section>
     );
   }
 
-  const canContinue =
-    step === 0
-      ? serviceIds.length > 0 && eligibleBarbers.length > 0
-      : step === 1
-        ? barberChoice !== null
-        : step === 2
-          ? startsAt !== null
-          : true;
+  const nextHint = !servicesDone
+    ? "Hizmet seçin"
+    : !barberDone
+      ? "Personel seçin"
+      : !startsAt
+        ? "Gün ve saat seçin"
+        : null;
 
   return (
-    <div>
-      <ol className="mb-8 flex gap-2" aria-label="Adımlar">
-        {STEPS.map((label, index) => (
-          <li key={label} className="flex-1" aria-current={index === step ? "step" : undefined}>
-            <div
-              className={`h-1 rounded-full ${index <= step ? "bg-zinc-900 dark:bg-zinc-100" : "bg-zinc-200 dark:bg-zinc-800"}`}
-            />
-            <span
-              className={`mt-2 hidden text-xs sm:block ${index === step ? "font-medium" : "text-zinc-500"}`}
-            >
-              {index + 1}. {label}
-            </span>
-          </li>
-        ))}
-      </ol>
-
-      <h2 className="mb-4 text-xl font-semibold tracking-tight sm:hidden">
-        {step + 1}. {STEPS[step]}
-      </h2>
-
-      {error && (
-        <p
-          role="alert"
-          className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
-        >
-          {error}
-        </p>
-      )}
-
-      {step === 0 && (
+    <div className="space-y-10">
+      {/* 1. Hizmet */}
+      <Step number={1} title="Hizmet" done={servicesDone} summary={selectedServices.map((s) => s.name).join(", ")}>
+        {services.length > 1 && (
+          <p className="mb-3 text-sm text-zinc-500">Birden fazla hizmet seçebilirsiniz.</p>
+        )}
         <div className="space-y-6">
           {categories.map(([category, items]) => (
             <fieldset key={category}>
@@ -300,129 +326,155 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
               </div>
             </fieldset>
           ))}
-          {serviceIds.length > 0 && eligibleBarbers.length === 0 && (
-            <p role="alert" className="text-sm text-red-700 dark:text-red-300">
-              Seçtiğiniz hizmetlerin tamamını veren bir personel yok. Lütfen hizmetleri ayrı
-              randevular olarak alın.
-            </p>
-          )}
         </div>
-      )}
+        {serviceIds.length > 0 && eligibleBarbers.length === 0 && (
+          <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
+            Seçtiğiniz hizmetlerin tamamını veren bir personel yok. Lütfen hizmetleri ayrı
+            randevular olarak alın.
+          </p>
+        )}
+      </Step>
 
-      {step === 1 && (
-        <div className="space-y-2">
-          {eligibleBarbers.length > 1 && (
-            <button
-              type="button"
-              aria-pressed={barberChoice === ANY_BARBER}
-              onClick={() => chooseBarber(ANY_BARBER)}
-              className={`${optionBase} ${barberChoice === ANY_BARBER ? optionSelected : optionIdle}`}
-            >
-              <span className="block font-medium">Fark etmez</span>
-              <span className="block text-sm text-zinc-500">
-                Seçtiğiniz saatte müsait olan personel atanır
-              </span>
-            </button>
-          )}
-          {eligibleBarbers.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              aria-pressed={barberChoice === b.id}
-              onClick={() => chooseBarber(b.id)}
-              className={`${optionBase} ${barberChoice === b.id ? optionSelected : optionIdle}`}
-            >
-              <span className="block font-medium">{b.display_name}</span>
-              {b.title && <span className="block text-sm text-zinc-500">{b.title}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {step === 2 && (
-        <div>
-          <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-3" aria-label="Tarih">
-            {days.map((day) => {
-              const selected = day === date;
-              return (
-                <button
-                  key={day}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => chooseDate(day)}
-                  className={`flex w-16 shrink-0 flex-col items-center rounded-xl border py-2 transition-colors ${selected ? optionSelected : optionIdle}`}
-                >
-                  <span className="text-xs text-zinc-500">
-                    {day === today ? "Bugün" : formatDay(day, { weekday: "short" })}
-                  </span>
-                  <span className="text-lg font-semibold tabular-nums">
-                    {formatDay(day, { day: "numeric" })}
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    {formatDay(day, { month: "short" })}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <h3 className="mt-4 mb-3 font-medium">
-            {formatDay(date, { weekday: "long", day: "numeric", month: "long" })}
-          </h3>
-
-          <div aria-live="polite">
-            {!slots ? (
-              <p className="py-8 text-center text-sm text-zinc-500">
-                Müsait saatler yükleniyor…
-              </p>
-            ) : slots.failed ? (
-              <div className="py-8 text-center text-sm">
-                <p className="text-red-700 dark:text-red-300">Müsait saatler yüklenemedi.</p>
-                <button
-                  type="button"
-                  className="mt-2 font-medium underline"
-                  onClick={() => setReloadCount((n) => n + 1)}
-                >
-                  Tekrar dene
-                </button>
-              </div>
-            ) : slots.slots.length === 0 ? (
-              <p className="py-8 text-center text-sm text-zinc-500">
-                Bu tarihte müsait saat yok. Lütfen başka bir gün seçin.
-              </p>
-            ) : (
-              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                {slots.slots.map((slot) => (
-                  <button
-                    key={slot}
-                    type="button"
-                    aria-pressed={slot === startsAt}
-                    onClick={() => setStartsAt(slot)}
-                    className={`rounded-lg border py-2.5 text-sm font-medium tabular-nums transition-colors ${slot === startsAt ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900" : optionIdle}`}
-                  >
-                    {formatTime(slot, salon.timezone)}
-                  </button>
-                ))}
-              </div>
+      {/* 2. Personel */}
+      <Step
+        number={2}
+        title="Personel"
+        sectionRef={barberRef}
+        done={barberDone}
+        summary={barberDone ? (barber?.display_name ?? "Fark etmez") : ""}
+      >
+        {!servicesDone ? (
+          <Waiting>Önce hizmet seçin.</Waiting>
+        ) : (
+          <div className="space-y-2">
+            {eligibleBarbers.length > 1 && (
+              <button
+                type="button"
+                aria-pressed={barberChoice === ANY_BARBER}
+                onClick={() => chooseBarber(ANY_BARBER)}
+                className={`${optionBase} ${barberChoice === ANY_BARBER ? optionSelected : optionIdle}`}
+              >
+                <span className="block font-medium">Fark etmez</span>
+                <span className="block text-sm text-zinc-500">
+                  Seçtiğiniz saatte müsait olan personel atanır
+                </span>
+              </button>
             )}
+            {eligibleBarbers.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                aria-pressed={barberChoice === b.id}
+                onClick={() => chooseBarber(b.id)}
+                className={`${optionBase} ${barberChoice === b.id ? optionSelected : optionIdle}`}
+              >
+                <span className="block font-medium">{b.display_name}</span>
+                {b.title && <span className="block text-sm text-zinc-500">{b.title}</span>}
+              </button>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </Step>
 
-      {step === 3 && startsAt && (
-        <form id="booking-form" onSubmit={submit} className="space-y-6">
-          <dl className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-            <SummaryRow label="Tarih">
-              {formatDay(date, { weekday: "long", day: "numeric", month: "long" })},{" "}
-              {formatTime(startsAt, salon.timezone)}
-            </SummaryRow>
-            <SummaryRow label="Personel">{barber?.display_name ?? "Fark etmez"}</SummaryRow>
-            <SummaryRow label="Hizmetler">
-              {selectedServices.map((s) => s.name).join(", ")}
-            </SummaryRow>
-          </dl>
+      {/* 3. Tarih ve saat */}
+      <Step
+        number={3}
+        title="Tarih ve saat"
+        sectionRef={timeRef}
+        done={startsAt !== null}
+        summary={
+          startsAt
+            ? `${formatDay(date, { day: "numeric", month: "long" })}, ${formatTime(startsAt, salon.timezone)}`
+            : ""
+        }
+      >
+        {!barberDone ? (
+          <Waiting>Önce hizmet ve personel seçin.</Waiting>
+        ) : (
+          <>
+            {initialDate !== today && date === initialDate && (
+              <p className="mb-3 text-sm text-zinc-500">
+                Bugün için randevu saatleri sona erdi; en yakın çalışma günü gösteriliyor.
+              </p>
+            )}
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-3" aria-label="Tarih">
+              {days.map((day) => {
+                const selected = day === date;
+                const closed = closedWeekdays.includes(dayOfWeek(day));
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    aria-pressed={selected}
+                    disabled={closed}
+                    title={closed ? "Kapalı" : undefined}
+                    onClick={() => chooseDate(day)}
+                    className={`flex w-16 shrink-0 flex-col items-center rounded-xl border py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${selected ? optionSelected : optionIdle}`}
+                  >
+                    <span className="text-xs text-zinc-500">
+                      {day === today ? "Bugün" : formatDay(day, { weekday: "short" })}
+                    </span>
+                    <span className="text-lg font-semibold tabular-nums">
+                      {formatDay(day, { day: "numeric" })}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {closed ? "Kapalı" : formatDay(day, { month: "short" })}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-          <div className="space-y-4">
+            <h3 className="mt-4 mb-3 font-medium">
+              {formatDay(date, { weekday: "long", day: "numeric", month: "long" })}
+            </h3>
+
+            <div aria-live="polite">
+              {!slots ? (
+                <p className="py-8 text-center text-sm text-zinc-500">
+                  Müsait saatler yükleniyor…
+                </p>
+              ) : slots.failed ? (
+                <div className="py-8 text-center text-sm">
+                  <p className="text-red-700 dark:text-red-300">Müsait saatler yüklenemedi.</p>
+                  <button
+                    type="button"
+                    className="mt-2 font-medium underline"
+                    onClick={() => setReloadCount((n) => n + 1)}
+                  >
+                    Tekrar dene
+                  </button>
+                </div>
+              ) : slots.slots.length === 0 ? (
+                <p className="py-8 text-center text-sm text-zinc-500">
+                  Bu tarihte müsait saat yok. Lütfen başka bir gün seçin.
+                </p>
+              ) : (
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {slots.slots.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      aria-pressed={slot === startsAt}
+                      onClick={() => chooseSlot(slot)}
+                      className={`rounded-lg border py-2.5 text-sm font-medium tabular-nums transition-colors ${slot === startsAt ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900" : optionIdle}`}
+                    >
+                      {formatTime(slot, salon.timezone)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </Step>
+
+      {/* 4. Bilgiler */}
+      <Step number={4} title="Bilgileriniz" sectionRef={infoRef} done={false} summary="">
+        {!startsAt ? (
+          <Waiting>Önce gün ve saat seçin.</Waiting>
+        ) : (
+          <form id="booking-form" onSubmit={submit} className="space-y-4">
             <label className="block text-sm font-medium">
               Ad soyad
               <input
@@ -481,51 +533,97 @@ export function BookingWizard({ catalog, today }: { catalog: SalonCatalog; today
                 />
               </label>
             </div>
-          </div>
-        </form>
-      )}
+          </form>
+        )}
+      </Step>
 
-      <div className="sticky bottom-0 mt-8 flex items-center justify-between gap-4 border-t border-zinc-200 bg-background py-4 dark:border-zinc-800">
-        <div className="min-w-0">
-          {step > 0 && (
-            <button
-              type="button"
-              onClick={() => goTo(step - 1)}
-              disabled={isPending}
-              className="text-sm font-medium text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400"
-            >
-              ← Geri
-            </button>
-          )}
-          {serviceIds.length > 0 && (
-            <p className="text-sm">
-              <span className="font-semibold tabular-nums">
-                {formatMoney(total.price, salon.currency)}
-              </span>
-              <span className="text-zinc-500">
-                {" "}
-                · {formatDuration(total.duration)}
-                {priceMayVary && " · personele göre değişebilir"}
-              </span>
-            </p>
-          )}
-        </div>
-        {step < 3 ? (
+      <div className="sticky bottom-0 -mx-4 border-t border-zinc-200 bg-background px-4 py-4 dark:border-zinc-800">
+        {error && (
+          <p
+            role="alert"
+            className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200"
+          >
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-between gap-4">
+          <p className="min-w-0 text-sm">
+            {serviceIds.length > 0 ? (
+              <>
+                <span className="font-semibold tabular-nums">
+                  {formatMoney(total.price, salon.currency)}
+                </span>
+                <span className="text-zinc-500">
+                  {" "}
+                  · {formatDuration(total.duration)}
+                  {priceMayVary && " · personele göre değişebilir"}
+                </span>
+              </>
+            ) : (
+              <span className="text-zinc-500">Henüz hizmet seçilmedi</span>
+            )}
+            {nextHint && <span className="block text-xs text-zinc-500">Sıradaki: {nextHint}</span>}
+          </p>
           <button
-            type="button"
-            disabled={!canContinue}
-            onClick={() => goTo(step + 1)}
+            type="submit"
+            form="booking-form"
+            disabled={!startsAt || isPending}
             className={primaryButton}
           >
-            Devam
-          </button>
-        ) : (
-          <button type="submit" form="booking-form" disabled={isPending} className={primaryButton}>
             {isPending ? "Gönderiliyor…" : "Randevuyu onayla"}
           </button>
-        )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function Step({
+  number,
+  title,
+  done,
+  summary,
+  sectionRef,
+  children,
+}: {
+  number: number;
+  title: string;
+  done: boolean;
+  /** Tamamlanan adımın kısa özeti (başlığın yanında). */
+  summary: string;
+  sectionRef?: SectionRef;
+  children: React.ReactNode;
+}) {
+  return (
+    <section ref={sectionRef} className="scroll-mt-6">
+      <div className="mb-4 flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ${
+            done
+              ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+              : "border border-zinc-300 text-zinc-500 dark:border-zinc-700"
+          }`}
+        >
+          {done ? "✓" : number}
+        </span>
+        <h2 tabIndex={-1} className="text-xl font-semibold tracking-tight outline-none">
+          {title}
+        </h2>
+        {done && summary && (
+          <span className="min-w-0 truncate text-sm text-zinc-500">{summary}</span>
+        )}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Waiting({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-xl border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700">
+      {children}
+    </p>
   );
 }
 

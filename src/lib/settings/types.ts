@@ -20,6 +20,8 @@ export type SettingsBarber = {
   services: Record<string, { duration: number | null; price: number | null }>;
   /** Haftalık mesai; anahtar 0 = Pazar. Değerler "HH:MM". Olmayan gün çalışmıyor. */
   hours: Record<number, { start: string; end: string }>;
+  /** Çalıştığı günlerdeki günlük mola ("HH:MM"); yoksa null. */
+  break: { start: string; end: string } | null;
 };
 
 export type SalonSettings = {

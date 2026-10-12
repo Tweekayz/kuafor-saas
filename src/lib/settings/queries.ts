@@ -24,7 +24,11 @@ export async function getSalonProfile(salonId: string): Promise<SalonProfile | n
 export async function getSalonSettings(salonId: string): Promise<SalonSettings> {
   const supabase = await createClient();
 
-  const [services, barbers, barberServices, workingHours, commissionRules] = await Promise.all([
+  const [breaks, services, barbers, barberServices, workingHours, commissionRules] = await Promise.all([
+    supabase
+      .from("working_hour_breaks")
+      .select("barber_id, start_time, end_time")
+      .eq("salon_id", salonId),
     supabase
       .from("services")
       .select("id, name, category, duration_minutes, price, is_active")
@@ -51,7 +55,7 @@ export async function getSalonSettings(salonId: string): Promise<SalonSettings> 
       .eq("salon_id", salonId)
       .is("service_id", null),
   ]);
-  for (const result of [services, barbers, barberServices, workingHours, commissionRules]) {
+  for (const result of [breaks, services, barbers, barberServices, workingHours, commissionRules]) {
     if (result.error) throw new Error(result.error.message, { cause: result.error });
   }
 
@@ -60,6 +64,7 @@ export async function getSalonSettings(salonId: string): Promise<SalonSettings> 
     commission_rate: null,
     services: {},
     hours: {},
+    break: null,
   }));
   const barberById = new Map(settingsBarbers.map((b) => [b.id, b]));
 
@@ -79,6 +84,13 @@ export async function getSalonSettings(salonId: string): Promise<SalonSettings> 
         start: row.start_time.slice(0, 5),
         end: row.end_time.slice(0, 5),
       };
+    }
+  }
+  // Panel her çalışma gününe aynı molayı yazar; ilk satır temsil eder.
+  for (const row of breaks.data ?? []) {
+    const barber = barberById.get(row.barber_id);
+    if (barber && !barber.break) {
+      barber.break = { start: row.start_time.slice(0, 5), end: row.end_time.slice(0, 5) };
     }
   }
   for (const row of commissionRules.data ?? []) {
