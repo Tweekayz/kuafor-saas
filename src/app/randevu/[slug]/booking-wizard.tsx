@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import { ConsultationBox } from "@/components/consultation-box";
 import { createBooking } from "@/lib/booking/actions";
 import type { BookingConfirmation, SalonCatalog } from "@/lib/booking/types";
 import {
@@ -47,8 +49,13 @@ export function BookingWizard({
   today,
   initialDate,
   closedWeekdays,
+  extrasEnabled,
+  aiAvailable,
 }: {
   catalog: SalonCatalog;
+  /** Görsel danışma bu kurulumda etkin mi (veritabanı güncellemesi uygulanmış mı). */
+  extrasEnabled: boolean;
+  aiAvailable: boolean;
   today: string;
   /** Varsayılan gün: bugün kapandıysa bir sonraki çalışma günü. */
   initialDate: string;
@@ -273,6 +280,36 @@ export function BookingWizard({
             Randevu saatinizde salonda olmanız yeterli. Değişiklik için salonla iletişime
             geçebilirsiniz.
           </p>
+        )}
+
+        <p className="mt-4 text-sm">
+          <Link
+            href={`/r/${confirmation.manage_token}`}
+            className="font-medium underline underline-offset-4"
+          >
+            Randevu sayfanızı açın
+          </Link>{" "}
+          <span className="text-zinc-500">
+            (bu bağlantıyı saklayın; randevunuzu oradan takip eder, sonrasında değerlendirirsiniz)
+          </span>
+        </p>
+
+        {extrasEnabled && (
+          <div className="mt-8 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+            <h3 className="text-lg font-semibold tracking-tight">
+              Görsel / ilham yükle <span className="font-normal text-zinc-500">(isteğe bağlı)</span>
+            </h3>
+            <p className="mt-1 mb-4 text-sm text-zinc-500">
+              Saçınızın ya da tırnaklarınızın fotoğrafını ve beğendiğiniz modeli paylaşın;
+              randevunuza hazırlıklı gelelim.
+            </p>
+            <ConsultationBox
+              token={confirmation.manage_token}
+              currency={salon.currency}
+              initial={[]}
+              aiAvailable={aiAvailable}
+            />
+          </div>
         )}
       </section>
     );

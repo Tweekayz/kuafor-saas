@@ -107,6 +107,26 @@ export async function completeAppointment(
 }
 
 /**
+ * Müşterinin randevu sayfasının yolu ("/r/<anahtar>"): değerlendirme ve görsel
+ * yükleme bağlantısı olarak müşteriye iletilir. RLS gereği yalnızca randevuyu
+ * görebilen ekip üyesi alabilir.
+ */
+export async function getCustomerLink(appointmentId: string): Promise<ActionResult<string>> {
+  if (!isUuid(appointmentId)) return invalid("Geçersiz randevu");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("appointments")
+    .select("manage_token")
+    .eq("id", appointmentId)
+    .maybeSingle();
+  if (error || !data) {
+    return { ok: false, code: "NOT_FOUND", message: "Randevu bulunamadı" };
+  }
+  return { ok: true, data: `/r/${data.manage_token}` };
+}
+
+/**
  * Randevuyu yeni bir saate, istenirse başka personele taşır.
  * startsAt saat dilimi içeren ISO 8601 olmalıdır (ör. "2026-10-12T10:00:00+03:00").
  */

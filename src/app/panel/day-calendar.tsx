@@ -11,6 +11,7 @@ import {
 } from "@/lib/format";
 import {
   completeAppointment,
+  getCustomerLink,
   rescheduleAppointment,
   updateAppointmentStatus,
 } from "@/lib/panel/actions";
@@ -138,6 +139,7 @@ export function DayCalendar({
   const [laneFilter, setLaneFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [linkNote, setLinkNote] = useState<string | null>(null);
   const [dragLane, setDragLane] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -148,6 +150,7 @@ export function DayCalendar({
 
   function open(id: string) {
     setError(null);
+    setLinkNote(null);
     setSelectedId(id);
     dialogRef.current?.showModal();
   }
@@ -188,6 +191,43 @@ export function DayCalendar({
         barberId && barberId !== selected.barber_id ? barberId : undefined,
       ),
     );
+  }
+
+  /**
+   * Müşterinin randevu sayfası bağlantısını kopyalar ya da müşterinin
+   * numarasına hazır mesajla WhatsApp sohbeti açar (mesajı personel gönderir).
+   */
+  function shareLink(mode: "copy" | "whatsapp") {
+    if (!selected) return;
+    const appointment = selected;
+    setLinkNote(null);
+    // Açılır pencere engeline takılmamak için sekme tıklama anında açılır.
+    const popup = mode === "whatsapp" ? window.open("", "_blank") : null;
+    startTransition(async () => {
+      const result = await getCustomerLink(appointment.appointment_id);
+      if (!result.ok) {
+        popup?.close();
+        setLinkNote(result.message);
+        return;
+      }
+      const url = `${window.location.origin}${result.data}`;
+      if (mode === "copy") {
+        try {
+          await navigator.clipboard.writeText(url);
+          setLinkNote("Kopyalandı");
+        } catch {
+          setLinkNote(url);
+        }
+        return;
+      }
+      const message =
+        appointment.status === "completed"
+          ? `Merhaba ${appointment.customer_name}, bizi tercih ettiğiniz için teşekkür ederiz. Deneyiminizi buradan değerlendirebilirsiniz: ${url}`
+          : `Merhaba ${appointment.customer_name}, randevu sayfanız: ${url}`;
+      const target = `https://wa.me/${appointment.customer_phone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+      if (popup) popup.location.href = target;
+      else window.location.href = target;
+    });
   }
 
   /** Sürükle-bırak: randevuyu aynı saatte başka personele taşır. */
@@ -359,6 +399,40 @@ export function DayCalendar({
               <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">
                 {error}
               </p>
+            )}
+
+            {selected.status !== "cancelled" && selected.status !== "no_show" && (
+              <div className="mt-6 rounded-lg bg-zinc-100 p-3 text-sm dark:bg-zinc-900">
+                <p className="font-medium">
+                  {selected.status === "completed"
+                    ? "Değerlendirme bağlantısı"
+                    : "Müşterinin randevu sayfası"}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {selected.status === "completed"
+                    ? "Müşteri bu bağlantıdan puan verir ve yorum yazar."
+                    : "Müşteri bu bağlantıdan görsel yükleyip yorum isteyebilir."}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => shareLink("whatsapp")}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
+                  >
+                    WhatsApp&apos;tan gönder
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => shareLink("copy")}
+                    className="rounded-lg border border-zinc-300 px-3 py-1.5 font-medium hover:bg-zinc-200 disabled:opacity-40 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                  >
+                    Bağlantıyı kopyala
+                  </button>
+                  {linkNote && <span role="status">{linkNote}</span>}
+                </div>
+              </div>
             )}
 
             {selected.status === "confirmed" && (

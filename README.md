@@ -17,9 +17,14 @@ Kuaför ve güzellik salonları için online randevu ve salon yönetimi. Next.js
 | `/panel/stok` | Sahip, yönetici, resepsiyon | Ürün stoğu ve kritik stok uyarıları |
 | `/panel/otomasyon` | Sahip, yönetici | Mesaj şablonları ve kuyruk (gönderim sağlayıcısı bağlı değil) |
 | `/panel/ayarlar` | Sahip, yönetici | Salon bilgileri, randevu kuralları, alan adı; salon oluşturma |
+| `/panel/gorseller` | Salon ekibi | Müşterilerin yüklediği görseller; yanıt ve fiyat tahmini |
+| `/panel/yorumlar` | Sahip, yönetici | Müşteri değerlendirmeleri: yayınlama, öne çıkarma, yanıt |
+| `/r/[anahtar]` | Bağlantıya sahip müşteri | Randevu özeti, görsel danışma, değerlendirme formu |
 | `/supervisor` | Süper yönetici | Platform istatistikleri, salon/kullanıcı yönetimi, domain talepleri |
 
 **Süper yönetici:** `/supervisor` yalnızca e-postası `SUPERVISOR_EMAILS` ortam değişkeninde olan, oturum açmış kullanıcıya açılır; başkasına "bulunamadı" döner. Panel veritabanına service role ile eriştiği için her sayfa ve her işlem yetkiyi ayrıca doğrular. Domain onayı `VERCEL_AUTH_TOKEN` + `VERCEL_PROJECT_ID` ile alan adını Vercel projesine ekler. Salon sahipleri paketlerini, dondurulma durumlarını ve domain onayını kendileri değiştiremez (veritabanı tetikleyicisi).
+
+**Görsel danışma ve değerlendirme:** müşteriler hesapsızdır; `/r/<anahtar>` adresindeki gizli anahtar (`appointments.manage_token`) randevunun kimliğidir. Görseller tarayıcıda küçültülür ve sunucunun o randevuya özel verdiği tek kullanımlık izinle Supabase Storage'a yüklenir: danışma görselleri kapalı `consultations` kovasında (personele imzalı bağlantıyla gösterilir), yorum fotoğrafları herkese açık `reviews` kovasında durur. Yapay zekâ önerisi `ANTHROPIC_API_KEY` tanımlıysa ve müşteri onay verirse çalışır. Vitrindeki ortalama puan tüm değerlendirmelerden hesaplanır; yayınlama yalnızca yorum metnini ve fotoğrafları etkiler.
 
 Salona özel adresler: `<slug>.<NEXT_PUBLIC_ROOT_DOMAIN>` ya da salonun kendi alan adı (`salons.custom_domain`) ile gelen ana sayfa isteği `src/proxy.ts` tarafından `/randevu/<slug>` sayfasına yönlendirilir (rewrite). Yerelde `http://<slug>.localhost:3000` ile denenebilir. Canlıda alan adının ayrıca Vercel projesine eklenmesi gerekir (subdomain için wildcard `*.alanadi.com`).
 

@@ -63,6 +63,8 @@ export type BookingConfirmation = {
   deposit_amount: number;
   requires_payment: boolean;
   hold_expires_at: string | null;
+  /** Müşterinin randevu sayfasının (/r/<anahtar>) gizli anahtarı. */
+  manage_token: string;
 };
 
 export type BookingErrorCode =

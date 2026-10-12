@@ -39,6 +39,18 @@ const NAV: NavItem[] = [
     access: "frontdesk",
   },
   {
+    href: "/panel/gorseller",
+    label: "Görsel Talepler",
+    icon: "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm-1 12 5-5 4 4 3-3 6 6M15.500 9.500h.01",
+    access: "member",
+  },
+  {
+    href: "/panel/yorumlar",
+    label: "Müşteri Yorumları",
+    icon: "M12 2.500l2.900 6.100 6.600.900-4.800 4.600 1.200 6.600L12 17.600l-5.900 3.100 1.200-6.600L2.500 9.500l6.600-.900L12 2.500Z",
+    access: "admin",
+  },
+  {
     href: "/panel/hizmetler",
     label: "Hizmetler & Fiyatlar",
     icon: "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12",

@@ -175,7 +175,8 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     return fail("UNKNOWN", "Randevu oluşturulamadı, lütfen tekrar deneyin");
   }
 
-  // manage_token ve customer_id istemciye gönderilmez.
+  // customer_id istemciye gönderilmez. manage_token müşterinin kendi randevu
+  // sayfasının anahtarıdır ve yalnızca randevuyu oluşturan tarayıcıya döner.
   const result = data as BookingConfirmation;
   return {
     ok: true,
@@ -189,6 +190,7 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
       deposit_amount: result.deposit_amount,
       requires_payment: result.requires_payment,
       hold_expires_at: result.hold_expires_at,
+      manage_token: result.manage_token,
     },
   };
 }
