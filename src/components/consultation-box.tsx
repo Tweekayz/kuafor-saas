@@ -161,7 +161,7 @@ export function ConsultationBox({
                   ? "Yakında kullanıma açılacak."
                   : aiUsed
                     ? "Bu randevu için öneri alındı."
-                    : "Fotoğrafınıza göre model ve renk fikirleri, hemen."}
+                    : "Fotoğrafınıza göre stil, renk ve bakım önerileri, hemen."}
               </span>
             </button>
           </div>
@@ -171,7 +171,7 @@ export function ConsultationBox({
             onChange={setImages}
             max={MAX_IMAGES_PER_REQUEST}
             disabled={isPending}
-            hint="Saçınızın ya da tırnaklarınızın fotoğrafı ve beğendiğiniz model · en fazla 3 görsel"
+            hint="Saç, tırnak ya da makyaj fotoğrafınız ve beğendiğiniz model · en fazla 3 görsel"
           />
 
           <label className="block text-sm font-medium">
@@ -195,8 +195,8 @@ export function ConsultationBox({
                 className="mt-1"
               />
               <span>
-                Fotoğraflarımın stil önerisi üretmek amacıyla bir yapay zekâ servisi tarafından
-                işlenmesini kabul ediyorum.
+                Fotoğraflarımın stil önerisi üretmek amacıyla üçüncü taraf bir yapay zekâ
+                servisine gönderilmesini ve orada işlenmesini kabul ediyorum.
               </span>
             </label>
           )}

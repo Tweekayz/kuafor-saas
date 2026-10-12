@@ -1,28 +1,45 @@
 import "server-only";
 
-import Anthropic from "@anthropic-ai/sdk";
+// Müşterinin yüklediği saç / tırnak / makyaj fotoğrafından stil önerisi üretir (Google
+// Gemini, görsel analiz). Yalnızca müşterinin açık onayıyla ve randevu başına
+// bir kez çağrılır. GEMINI_API_KEY tanımlı değilse özellik kapalıdır.
 
-// Müşterinin yüklediği saç / tırnak fotoğrafından stil önerisi üretir (Claude,
-// görsel analiz). Yalnızca müşterinin açık onayıyla ve randevu başına bir kez
-// çağrılır. ANTHROPIC_API_KEY tanımlı değilse özellik kapalıdır.
+/**
+ * Kullanılacak Gemini modeli; GEMINI_MODEL ile değiştirilebilir. Varsayılan,
+ * ücretsiz katmanı olan ve görsel girdi kabul eden düşük maliyetli modeldir
+ * (gemini-1.5-flash ve gemini-2.0-flash Google'ın güncel model listesinde yoktur).
+ */
+const MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-3.5-flash-lite";
+const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
+const TIMEOUT_MS = 45_000;
 
-const MODEL = "claude-opus-5-5";
+const SYSTEM_PROMPT = `Bir kuaför ve güzellik salonunda çalışan deneyimli bir stilistsin ve müşterilere randevu öncesi fikir veriyorsun. Müşteri kendi saçının, tırnaklarının ya da makyajının fotoğrafını, bazen de beğendiği bir modelin görselini yükler; sen bu görsellere ve varsa müşterinin notuna bakarak kısa, uygulanabilir öneriler yazarsın.
 
-const SYSTEM_PROMPT = `Bir kuaför ve güzellik salonunun müşterilerine randevu öncesi fikir veren stil danışmanısın. Müşteri kendi saçının ya da tırnaklarının fotoğrafını, bazen de beğendiği bir modelin görselini yükler; sen bu görsellere ve varsa müşterinin notuna bakarak kısa, uygulanabilir öneriler yazarsın.
+Önerilerin fotoğrafta gerçekten görünen şeylere dayanmalı: saçın uzunluğu, dokusu, yoğunluğu ve mevcut rengi; yüz hatlarının genel biçimi; tırnakların uzunluğu ve şekli; makyajda kullanılan tonlar ve ten alt tonu. Görselde net seçemediğin bir şeyi varsayma; emin değilsen bunu söyle ve salonda birlikte bakılmasını öner.
 
-Önerilerin fotoğrafta gerçekten görünen şeylere dayanmalı: saçın uzunluğu, dokusu, yoğunluğu ve mevcut rengi; yüz hatlarının genel biçimi; tırnakların uzunluğu ve şekli. Görselde net seçemediğin bir şeyi varsayma; emin değilsen bunu söyle ve salonda birlikte bakılmasını öner.
+Yanıtın üç kısa bölümden oluşsun ve her bölüm kendi adıyla başlasın: "Stil önerisi" (hangi model ya da şekil, neden uygun), "Renk tavsiyesi" (hangi tonlar yakışır, mevcut renkten oraya nasıl gidilir) ve "Bakım ipuçları" (bu görünümü korumak için evde yapılabilecek bir iki şey). Müşteriye doğrudan hitap eden sade bir Türkçeyle, düz metin olarak yaz; yıldız, kare işareti gibi biçimlendirme sembolleri kullanma. Salonun verdiği hizmetler listelenmişse önerilerini mümkün olduğunca onlarla ilişkilendir. Müşterinin beğendiği model görseli varsa, mevcut durumdan o modele nasıl gidileceğini ve gerçekçi olup olmadığını belirt. Toplam uzunluk 180 kelimeyi geçmesin.
 
-Yanıtını müşteriye doğrudan hitap eden sade bir Türkçeyle, düz metin olarak yaz (başlık işaretleri ya da madde imleri için özel sembol kullanma). En fazla üç öneri ver; her biri için neden uygun olduğunu bir cümleyle açıkla. Salonun verdiği hizmetler listelenmişse önerilerini mümkün olduğunca onlarla ilişkilendir. Müşterinin beğendiği model görseli varsa, mevcut saç ya da tırnak durumundan o modele nasıl gidileceğini ve gerçekçi olup olmadığını belirt. Toplam uzunluk 150 kelimeyi geçmesin.
-
-Fotoğraftaki kişinin kim olduğunu tahmin etme. Yaş, kilo, sağlık, köken ya da çekicilik hakkında yorum yapma; yalnızca saç, tırnak ve stil konuş. Görsel bir saç ya da tırnak fotoğrafı değilse nazikçe uygun bir fotoğraf istendiğini söyle. Kesin fiyat ya da süre verme; bunları salon belirler. Son cümlende bunun bir ön fikir olduğunu ve son kararın randevuda uzmanla birlikte verileceğini hatırlat.`;
+Fotoğraftaki kişinin kim olduğunu tahmin etme. Yaş, kilo, sağlık, köken ya da çekicilik hakkında yorum yapma; yalnızca saç, tırnak, makyaj ve stil konuş. Cilt ya da saç derisi hastalığı gibi tıbbi bir konuda teşhis koyma; gerekirse bir uzmana danışılmasını öner. Görsel saç, tırnak ya da makyaj fotoğrafı değilse nazikçe uygun bir fotoğraf istendiğini söyle. Kesin fiyat ya da süre verme; bunları salon belirler. Son cümlende bunun bir ön fikir olduğunu ve son kararın randevuda uzmanla birlikte verileceğini hatırlat.`;
 
 export type StyleImage = { data: string; mediaType: "image/jpeg" | "image/png" | "image/webp" };
 
 export type StyleAdviceResult = { ok: true; text: string } | { ok: false; message: string };
 
 export function isAiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.GEMINI_API_KEY);
 }
+
+// generateContent yanıtının kullandığımız kısmı.
+type GeminiResponse = {
+  candidates?: {
+    content?: { parts?: { text?: string }[] };
+    finishReason?: string;
+  }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { code?: number; status?: string; message?: string };
+};
+
+const BLOCKED = "Bu görsel için öneri üretilemedi. Dilerseniz personelimizden yorum isteyin.";
 
 export async function generateStyleAdvice(input: {
   images: StyleImage[];
@@ -30,7 +47,8 @@ export async function generateStyleAdvice(input: {
   salonName: string;
   services: string[];
 }): Promise<StyleAdviceResult> {
-  if (!isAiConfigured()) return { ok: false, message: "Yapay zekâ önerisi şu anda kullanılamıyor" };
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { ok: false, message: "Yapay zekâ önerisi şu anda kullanılamıyor" };
 
   const context = [
     `Salon: ${input.salonName}`,
@@ -40,58 +58,66 @@ export async function generateStyleAdvice(input: {
     .filter(Boolean)
     .join("\n");
 
+  let response: Response;
   try {
-    const client = new Anthropic();
-    const response = await client.beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      // Güvenlik sınıflandırıcısı isteği reddederse sunucu, uygun bir yedek
-      // modelde aynı isteği yeniden dener.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      // Kısa, tek seferlik bir öneri: düşük efor yeterli ve hızlı.
-      output_config: { effort: "low" },
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...input.images.map((image) => ({
-              type: "image" as const,
-              source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
-            })),
-            { type: "text" as const, text: context },
-          ],
-        },
-      ],
+    response = await fetch(`${ENDPOINT}/${encodeURIComponent(MODEL)}:generateContent`, {
+      method: "POST",
+      // Anahtar adres satırına değil başlığa yazılır (günlüklere düşmesin).
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              ...input.images.map((image) => ({
+                inline_data: { mime_type: image.mediaType, data: image.data },
+              })),
+              { text: context },
+            ],
+          },
+        ],
+        // Modelin düşünme payı da bu sınırdan düşer; kısa yanıt için bol tutulur.
+        generationConfig: { maxOutputTokens: 4096 },
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-
-    if (response.stop_reason === "refusal") {
-      return {
-        ok: false,
-        message: "Bu görsel için öneri üretilemedi. Dilerseniz personelimizden yorum isteyin.",
-      };
-    }
-
-    const text = response.content
-      .flatMap((block) => (block.type === "text" ? [block.text] : []))
-      .join("\n")
-      .trim();
-    if (!text) return { ok: false, message: "Öneri üretilemedi, lütfen tekrar deneyin" };
-    return { ok: true, text };
   } catch (error) {
-    if (error instanceof Anthropic.RateLimitError) {
+    console.error("style advice: request failed", error);
+    return { ok: false, message: "Öneri üretilemedi, lütfen daha sonra tekrar deneyin" };
+  }
+
+  const data = (await response.json().catch(() => ({}))) as GeminiResponse;
+
+  if (!response.ok) {
+    console.error("style advice failed", response.status, data.error?.status, data.error?.message);
+    if (response.status === 429) {
+      // Ücretsiz katmanın dakikalık / günlük kotası dolduğunda da bu döner.
       return { ok: false, message: "Şu anda yoğunluk var, lütfen birkaç dakika sonra tekrar deneyin" };
     }
-    if (error instanceof Anthropic.BadRequestError) {
-      console.error("style advice rejected", error.message);
+    if (response.status === 400) {
       return { ok: false, message: "Görsel işlenemedi. Lütfen farklı bir fotoğraf deneyin." };
-    }
-    if (error instanceof Anthropic.APIError) {
-      console.error("style advice failed", error.status, error.message);
-    } else {
-      console.error("style advice failed", error);
     }
     return { ok: false, message: "Öneri üretilemedi, lütfen daha sonra tekrar deneyin" };
   }
+
+  // Güvenlik filtresi isteği ya da yanıtı engellediyse aday dönmez.
+  if (data.promptFeedback?.blockReason) return { ok: false, message: BLOCKED };
+  const candidate = data.candidates?.[0];
+  const text = (candidate?.content?.parts ?? [])
+    .map((part) => part.text ?? "")
+    .join("")
+    .trim();
+  if (!text) {
+    console.error("style advice: empty response", candidate?.finishReason);
+    return {
+      ok: false,
+      message:
+        candidate?.finishReason && candidate.finishReason !== "STOP"
+          ? BLOCKED
+          : "Öneri üretilemedi, lütfen tekrar deneyin",
+    };
+  }
+  return { ok: true, text };
 }
