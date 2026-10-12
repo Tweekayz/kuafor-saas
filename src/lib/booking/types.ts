@@ -70,6 +70,7 @@ export type BookingErrorCode =
   | "CUSTOMER_INFO_REQUIRED"
   | "INVALID_PHONE"
   | "CUSTOMER_BLOCKED"
+  | "TOO_MANY_BOOKINGS"
   | "UNAVAILABLE"
   | "UNKNOWN";
 

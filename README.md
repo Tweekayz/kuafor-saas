@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kuaför Randevu
 
-## Getting Started
+Kuaför ve güzellik salonları için online randevu ve salon yönetimi. Next.js (App Router, Cache Components) + Supabase.
 
-First, run the development server:
+## Sayfalar
+
+| Adres | Kim görür | İçerik |
+| --- | --- | --- |
+| `/` | Herkes | Tanıtım sayfası |
+| `/randevu/[slug]` | Herkes | Salonun online randevu akışı |
+| `/giris` | Herkes | Salon paneline giriş |
+| `/panel` | Salon ekibi | Günlük randevu takvimi |
+| `/panel/finans` | Sahip, yönetici | Ciro ve prim raporları |
+| `/panel/hizmetler` | Sahip, yönetici | Hizmet yönetimi |
+| `/panel/personel` | Sahip, yönetici | Personel, hizmet eşleştirme, çalışma saatleri |
+| `/panel/ayarlar` | Sahip, yönetici | Salon bilgileri; salonu olmayan hesap için salon oluşturma |
+
+## Ortam değişkenleri
+
+`.env.example` dosyasını `.env.local` olarak kopyalayıp doldurun. Aynı değişkenler Vercel'de de (Project → Settings → Environment Variables) tanımlı olmalıdır.
+
+| Değişken | Zorunlu | Açıklama |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Evet | Supabase proje adresi |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Evet | Supabase anon anahtarı |
+| `SUPABASE_SERVICE_ROLE_KEY` | Evet | Yalnızca sunucu. Hesapsız müşterinin randevu alabilmesi için gerekir; yoksa randevu sayfası "kullanılamıyor" der. Asla `NEXT_PUBLIC_` yapmayın. |
+| `NEXT_PUBLIC_DEMO_SALON_SLUG` | Hayır | Tanıtım sayfasındaki demo butonunun açtığı salon (varsayılan `randevu`) |
+
+Vercel'de bir değişkeni ekledikten ya da değiştirdikten sonra yeniden deploy gerekir.
+
+## Geliştirme
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run lint
+npm run build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Veritabanı
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Şema ve fonksiyonlar `supabase/migrations/` altındadır; sırayla Supabase SQL Editor'de ya da `supabase db push` ile uygulanır. Yetkilendirme veritabanındadır (RLS + fonksiyon içi rol kontrolü).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## İlk kurulum
 
-## Learn More
+1. Supabase → Authentication → Users altından salon sahibi için bir kullanıcı oluşturun (uygulamada kayıt ekranı yoktur).
+2. `/giris` ile girin; `/panel/ayarlar` salon oluşturma formunu gösterir.
+3. `/panel/hizmetler` → hizmetleri ekleyin.
+4. `/panel/personel` → personeli ekleyin, kartını açıp **Hizmetleri kaydet** ve **Saatleri kaydet** adımlarını tamamlayın. İkisi de kaydedilmeden personel randevu sayfasında görünmez.
+5. `/randevu/<salon-adresi>` bağlantısını müşterilerinizle paylaşın.
 
-To learn more about Next.js, take a look at the following resources:
+## Tanıtım sayfası bilgileri
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Marka adı, iletişim bilgileri, fiyat ve demo salonu `src/lib/site.ts` dosyasındadır.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Yayın öncesi kontrol listesi
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [ ] Vercel'de üç zorunlu ortam değişkeni tanımlı
+- [ ] `src/lib/site.ts` içindeki iletişim bilgileri gerçek
+- [ ] Demo salonda en az bir hizmet ve randevu alabilen bir personel var
+- [ ] Vercel Firewall'da `/randevu/*` için IP bazlı hız sınırı tanımlı (uygulama yalnızca telefon ve salon bazında sınırlar)
+- [ ] Supabase → Authentication → URL Configuration → Site URL üretim adresi

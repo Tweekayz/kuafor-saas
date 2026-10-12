@@ -15,6 +15,66 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const E164_RE = /^\+[1-9][0-9]{7,14}$/;
 const MAX_SERVICES = 10;
 
+// Misafir rezervasyonunda kötüye kullanım sınırları. IP bazlı hız sınırı
+// barındırma katmanında (Vercel Firewall) ayrıca tanımlanmalıdır.
+const MAX_UPCOMING_PER_PHONE = 3;
+const BURST_WINDOW_MINUTES = 10;
+const MAX_ONLINE_BOOKINGS_PER_WINDOW = 20;
+
+type AdminClient = NonNullable<ReturnType<typeof createAdminClient>>;
+
+/** Sınır aşıldıysa kullanıcıya gösterilecek hata, aksi halde null. */
+async function checkGuestLimits(
+  admin: AdminClient,
+  salonId: string,
+  phone: string,
+): Promise<BookingResult | null> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - BURST_WINDOW_MINUTES * 60_000);
+
+  const [burst, customer] = await Promise.all([
+    admin
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("salon_id", salonId)
+      .eq("source", "online")
+      .gte("created_at", windowStart.toISOString()),
+    admin.from("customers").select("id").eq("salon_id", salonId).eq("phone", phone).maybeSingle(),
+  ]);
+  if (burst.error || customer.error) {
+    console.error("createBooking: limit check failed", burst.error ?? customer.error);
+    return fail("UNKNOWN", "Randevu oluşturulamadı, lütfen tekrar deneyin");
+  }
+
+  if ((burst.count ?? 0) >= MAX_ONLINE_BOOKINGS_PER_WINDOW) {
+    return fail(
+      "UNAVAILABLE",
+      "Şu anda çok fazla randevu talebi var. Lütfen birkaç dakika sonra tekrar deneyin.",
+    );
+  }
+
+  if (customer.data) {
+    const upcoming = await admin
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", customer.data.id)
+      .in("status", ["pending_payment", "confirmed"])
+      .gt("starts_at", now.toISOString());
+    if (upcoming.error) {
+      console.error("createBooking: limit check failed", upcoming.error);
+      return fail("UNKNOWN", "Randevu oluşturulamadı, lütfen tekrar deneyin");
+    }
+    if ((upcoming.count ?? 0) >= MAX_UPCOMING_PER_PHONE) {
+      return fail(
+        "TOO_MANY_BOOKINGS",
+        `Bu telefon numarasıyla bekleyen ${MAX_UPCOMING_PER_PHONE} randevunuz var. Yeni randevu için lütfen salonla iletişime geçin.`,
+      );
+    }
+  }
+
+  return null;
+}
+
 function fail(code: BookingErrorCode, message: string): BookingResult {
   return { ok: false, code, message };
 }
@@ -78,13 +138,21 @@ export async function createBooking(input: BookingInput): Promise<BookingResult>
     data: { user },
   } = await sessionClient.auth.getUser();
 
-  const supabase = user ? sessionClient : createAdminClient();
-  if (!supabase) {
-    console.error("createBooking: SUPABASE_SERVICE_ROLE_KEY tanımlı değil");
-    return fail(
-      "UNAVAILABLE",
-      "Online randevu şu anda kullanılamıyor, lütfen salonu arayın",
-    );
+  let supabase;
+  if (user) {
+    supabase = sessionClient;
+  } else {
+    const admin = createAdminClient();
+    if (!admin) {
+      console.error("createBooking: SUPABASE_SERVICE_ROLE_KEY tanımlı değil");
+      return fail(
+        "UNAVAILABLE",
+        "Online randevu şu anda kullanılamıyor, lütfen salonu arayın",
+      );
+    }
+    const limited = await checkGuestLimits(admin, salonId, cleanPhone);
+    if (limited) return limited;
+    supabase = admin;
   }
 
   const { data, error } = await supabase.rpc("book_appointment", {

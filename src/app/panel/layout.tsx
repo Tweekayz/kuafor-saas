@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { getPanelContext } from "@/lib/panel/queries";
 
 import { Sidebar, SidebarSkeleton } from "./_components/sidebar";
+
+export const metadata: Metadata = {
+  robots: { index: false },
+};
 
 export default function PanelLayout({ children }: LayoutProps<"/panel">) {
   return (

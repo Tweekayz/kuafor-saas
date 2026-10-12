@@ -353,7 +353,12 @@ export async function saveBarberServices(_prev: FormState, formData: FormData): 
     if (error) return unexpected("saveBarberServices", error);
   }
 
-  return saved(membership);
+  return saved(
+    membership,
+    rows.length > 0
+      ? `${rows.length} hizmet kaydedildi`
+      : "Kaydedildi. Hizmet seçilmediği için bu personel randevu alamaz",
+  );
 }
 
 /**
@@ -409,5 +414,10 @@ export async function saveWorkingHours(_prev: FormState, formData: FormData): Pr
     if (error) return unexpected("saveWorkingHours", error);
   }
 
-  return saved(membership);
+  return saved(
+    membership,
+    rows.length > 0
+      ? `Haftada ${rows.length} gün kaydedildi`
+      : "Kaydedildi. Çalışma günü seçilmediği için bu personel randevu alamaz",
+  );
 }

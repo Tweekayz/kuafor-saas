@@ -12,7 +12,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin", "latin-ext"],
 });
 
+// Vercel üretim alan adı (sistem değişkeni); paylaşım önizlemelerindeki mutlak
+// adresler bundan üretilir. Yerelde tanımsızdır.
+const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+
 export const metadata: Metadata = {
+  metadataBase: productionHost ? new URL(`https://${productionHost}`) : undefined,
   title: {
     default: "Kuaför Randevu",
     template: "%s · Kuaför Randevu",

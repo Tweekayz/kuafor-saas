@@ -4,15 +4,9 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
-export type SignInState = { error: string } | null;
+import { safeNext } from "./redirect";
 
-/** Yalnızca site içi yollara yönlendir (açık yönlendirme engeli). */
-function safeNext(value: FormDataEntryValue | null): string {
-  if (typeof value !== "string") return "/panel";
-  return value.startsWith("/") && !value.startsWith("//") && !value.includes("\\")
-    ? value
-    : "/panel";
-}
+export type SignInState = { error: string } | null;
 
 export async function signIn(_prev: SignInState, formData: FormData): Promise<SignInState> {
   const email = formData.get("email");
@@ -24,6 +18,15 @@ export async function signIn(_prev: SignInState, formData: FormData): Promise<Si
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
   if (error) {
+    if (error.code === "email_not_confirmed") {
+      return { error: "E-posta adresiniz henüz doğrulanmamış. Gelen kutunuzdaki bağlantıya tıklayın." };
+    }
+    if (error.status === 429) {
+      return { error: "Çok fazla deneme yapıldı. Lütfen birkaç dakika sonra tekrar deneyin." };
+    }
+    if (error.code !== "invalid_credentials") {
+      console.error("signIn failed", error);
+    }
     return { error: "E-posta veya şifre hatalı" };
   }
 

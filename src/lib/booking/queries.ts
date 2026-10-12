@@ -32,7 +32,7 @@ export async function getSalonCatalog(slug: string): Promise<SalonCatalog | null
   if (salon.error) throw new Error(salon.error.message, { cause: salon.error });
   if (!salon.data) return null;
 
-  const [services, barbers, barberServices] = await Promise.all([
+  const [services, barbers, barberServices, workingHours] = await Promise.all([
     supabase
       .from("services")
       .select("id, name, category, description, duration_minutes, price")
@@ -51,16 +51,18 @@ export async function getSalonCatalog(slug: string): Promise<SalonCatalog | null
       .from("barber_services")
       .select("barber_id, service_id, duration_override, price_override")
       .eq("salon_id", salon.data.id),
+    supabase.from("working_hours").select("barber_id").eq("salon_id", salon.data.id),
   ]);
-  for (const result of [services, barbers, barberServices]) {
+  for (const result of [services, barbers, barberServices, workingHours]) {
     if (result.error) throw new Error(result.error.message, { cause: result.error });
   }
 
+  // Mesai saati girilmemiş personelin hiçbir zaman boş saati olmaz; listeleme.
+  const scheduled = new Set((workingHours.data ?? []).map((w) => w.barber_id));
   const activeServiceIds = new Set((services.data ?? []).map((s) => s.id));
-  const catalogBarbers: CatalogBarber[] = (barbers.data ?? []).map((b) => ({
-    ...b,
-    services: {},
-  }));
+  const catalogBarbers: CatalogBarber[] = (barbers.data ?? [])
+    .filter((b) => scheduled.has(b.id))
+    .map((b) => ({ ...b, services: {} }));
   const barberById = new Map(catalogBarbers.map((b) => [b.id, b]));
 
   for (const row of barberServices.data ?? []) {

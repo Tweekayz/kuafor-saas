@@ -192,6 +192,8 @@ function ServicesForm({
   services: SettingsService[];
 }) {
   const [state, action, pending] = useActionState(saveBarberServices, null);
+  // Hiç eşleştirme yokken aktif hizmetler önerilir; kaydedilene kadar geçerli değildir.
+  const unsaved = Object.keys(barber.services).length === 0;
 
   return (
     <form action={action}>
@@ -201,6 +203,7 @@ function ServicesForm({
       <p className="mt-1 text-xs text-zinc-500">
         Özel süre ve fiyat boş bırakılırsa hizmetin standart değeri kullanılır.
       </p>
+      {unsaved && services.length > 0 && <UnsavedHint button="Hizmetleri kaydet" />}
 
       {services.length === 0 ? (
         <p className="mt-3 text-sm text-zinc-500">Önce yukarıdan hizmet ekleyin.</p>
@@ -219,7 +222,7 @@ function ServicesForm({
                       type="checkbox"
                       name="service"
                       value={service.id}
-                      defaultChecked={assigned !== undefined}
+                      defaultChecked={unsaved ? service.is_active : assigned !== undefined}
                     />
                     <span className="min-w-0">
                       <span className="block truncate font-medium">
@@ -271,8 +274,19 @@ function ServicesForm({
   );
 }
 
+function UnsavedHint({ button }: { button: string }) {
+  return (
+    <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+      Henüz kayıt yok. Aşağıdaki seçim bir öneridir; düzenleyip “{button}” düğmesine basınca
+      geçerli olur.
+    </p>
+  );
+}
+
 function HoursForm({ salonId, barber }: { salonId: string; barber: SettingsBarber }) {
   const [state, action, pending] = useActionState(saveWorkingHours, null);
+  // Hiç mesai yokken Pazartesi-Cumartesi önerilir; kaydedilene kadar geçerli değildir.
+  const unsaved = Object.keys(barber.hours).length === 0;
 
   return (
     <form action={action}>
@@ -280,6 +294,7 @@ function HoursForm({ salonId, barber }: { salonId: string; barber: SettingsBarbe
       <input type="hidden" name="barber_id" value={barber.id} />
       <h4 className="text-sm font-semibold">Çalışma saatleri</h4>
       <p className="mt-1 text-xs text-zinc-500">İşaretli olmayan günlerde randevu alınamaz.</p>
+      {unsaved && <UnsavedHint button="Saatleri kaydet" />}
 
       <ul className="mt-3 space-y-2">
         {WEEK.map(([day, label]) => {
@@ -287,7 +302,11 @@ function HoursForm({ salonId, barber }: { salonId: string; barber: SettingsBarbe
           return (
             <li key={day} className="grid grid-cols-[1fr_6.5rem_6.5rem] items-center gap-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name={`on:${day}`} defaultChecked={hours !== undefined} />
+                <input
+                  type="checkbox"
+                  name={`on:${day}`}
+                  defaultChecked={unsaved ? day !== 0 : hours !== undefined}
+                />
                 {label}
               </label>
               <input
