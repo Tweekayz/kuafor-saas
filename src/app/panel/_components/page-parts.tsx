@@ -109,12 +109,10 @@ export function StatTile({
 export function MigrationNotice({ feature }: { feature: string }) {
   return (
     <div className="mt-6 rounded-xl bg-amber-50 p-5 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-      <p className="font-semibold">{feature} için veritabanı güncellemesi gerekiyor</p>
+      <p className="font-semibold">{feature} henüz etkinleştirilmedi</p>
       <p className="mt-1">
-        Supabase → SQL Editor&apos;de{" "}
-        <code className="font-mono">supabase/migrations/20261013000000_business_modules.sql</code>{" "}
-        dosyasının içeriğini çalıştırın. Güncelleme yapılana kadar bu bölüm kullanılamaz;
-        sitenin geri kalanı etkilenmez.
+        Bu bölüm hesabınızda yakında kullanıma açılacak. Sorularınız için platform
+        yöneticinizle iletişime geçebilirsiniz. Panelin geri kalanı etkilenmez.
       </p>
     </div>
   );

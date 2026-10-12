@@ -5,7 +5,7 @@ import { Suspense } from "react";
 
 import { getBookingRules, getCustomDomain } from "@/lib/business/queries";
 import { getPanelContext } from "@/lib/panel/queries";
-import { firstParam, isAdminRole } from "@/lib/panel/session";
+import { FROZEN_PATH, firstParam, isAdminRole } from "@/lib/panel/session";
 import { getSalonProfile } from "@/lib/settings/queries";
 
 import { MigrationNotice, NoAccess, PageHeader, PageSkeleton } from "../_components/page-parts";
@@ -18,6 +18,26 @@ export const metadata: Metadata = {
 
 /** Uygulamanın kök alan adı (örn. "saasdomain.com"); salon adresleri bunun alt alan adıdır. */
 const ROOT_DOMAIN = process.env.NEXT_PUBLIC_ROOT_DOMAIN;
+
+/** Salonların alan adlarını yönlendireceği CNAME hedefi. */
+const CNAME_TARGET =
+  process.env.NEXT_PUBLIC_CNAME_TARGET ||
+  (ROOT_DOMAIN ? `cname.${ROOT_DOMAIN}` : "cname.yuzdeyuzrandevu.com");
+
+const DOMAIN_STATUS = {
+  pending: {
+    text: "Domain Bağlantı Talebi Alındı – Onay Bekliyor",
+    tone: "bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100",
+  },
+  active: {
+    text: "Alan adınız onaylandı ve aktif",
+    tone: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-100",
+  },
+  rejected: {
+    text: "Alan adı talebiniz onaylanmadı. Ayrıntı için bizimle iletişime geçin.",
+    tone: "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200",
+  },
+};
 
 export default function SettingsPage({ searchParams }: PageProps<"/panel/ayarlar">) {
   return (
@@ -49,6 +69,7 @@ async function Settings({ searchParams }: Pick<PageProps<"/panel/ayarlar">, "sea
   const slug = firstParam(query.salon);
   const membership =
     context.memberships.find((m) => m.salon_slug === slug) ?? context.memberships[0];
+  if (!membership.is_active) redirect(FROZEN_PATH);
   if (!isAdminRole(membership)) return <NoAccess />;
 
   const [salon, rules, customDomain] = await Promise.all([
@@ -131,31 +152,24 @@ async function Settings({ searchParams }: Pick<PageProps<"/panel/ayarlar">, "sea
         </dl>
 
         <div className="mt-6 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-          {customDomain === undefined ? (
+          {customDomain === null ? (
             <MigrationNotice feature="Özel alan adı" />
           ) : (
             <>
-              <CustomDomainForm salonId={salon.id} domain={customDomain} />
-              <div className="mt-4 rounded-lg bg-zinc-100 p-4 text-sm dark:bg-zinc-900">
-                <p className="font-medium">Alan adınızı bağlamak için</p>
-                <ol className="mt-2 list-inside list-decimal space-y-1">
-                  <li>Alan adınızı yukarıya yazıp kaydedin.</li>
-                  <li>
-                    Alan adınızı aldığınız firmanın DNS panelinde şu kaydı ekleyin:
-                    <span className="mt-1 block font-mono text-xs">
-                      Tür: CNAME · Ad: randevu · Değer: cname.vercel-dns.com
-                    </span>
-                  </li>
-                  <li>
-                    Platform yöneticisi aynı alan adını Vercel projesine eklemelidir (Project →
-                    Settings → Domains). Bu adım yapılmadan adres açılmaz.
-                  </li>
-                </ol>
-                <p className="mt-2 text-xs text-zinc-500">
-                  DNS değişikliğinin yayılması birkaç saat sürebilir. SSL sertifikası Vercel
-                  tarafından kendiliğinden oluşturulur.
+              {customDomain.domain && customDomain.status && (
+                <p
+                  role="status"
+                  className={`mb-4 rounded-lg px-4 py-3 text-sm font-medium ${DOMAIN_STATUS[customDomain.status].tone}`}
+                >
+                  {DOMAIN_STATUS[customDomain.status].text}
                 </p>
-              </div>
+              )}
+              <CustomDomainForm salonId={salon.id} domain={customDomain.domain} />
+              <p className="mt-4 rounded-lg bg-zinc-100 p-4 text-sm dark:bg-zinc-900">
+                Alan adınızı platformumuza yönlendirmek için DNS panelinizde CNAME kaydınızı{" "}
+                <span className="font-mono font-medium">{CNAME_TARGET}</span> olarak ayarlayın.
+                Yöneticimiz alan adınızı onayladığında sisteminiz otomatik aktif olacaktır.
+              </p>
             </>
           )}
         </div>

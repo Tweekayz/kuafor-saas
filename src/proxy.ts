@@ -26,12 +26,14 @@ async function slugForCustomDomain(host: string): Promise<string | null> {
     const url = new URL("/rest/v1/salons", process.env.NEXT_PUBLIC_SUPABASE_URL);
     url.searchParams.set("select", "slug");
     url.searchParams.set("custom_domain", `eq.${host}`);
+    // Yalnızca süper yöneticinin onayladığı alan adları yönlendirilir.
+    url.searchParams.set("custom_domain_status", "eq.active");
     url.searchParams.set("is_active", "eq.true");
     url.searchParams.set("limit", "1");
     const response = await fetch(url, {
       headers: { apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY! },
     });
-    // custom_domain sütunu henüz yoksa (güncelleme uygulanmadıysa) 4xx döner.
+    // İlgili sütunlar henüz yoksa (güncelleme uygulanmadıysa) 4xx döner.
     if (response.ok) {
       const rows = (await response.json()) as { slug: string }[];
       slug = rows[0]?.slug ?? null;

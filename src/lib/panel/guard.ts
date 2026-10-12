@@ -32,6 +32,7 @@ export async function authorizeSalon(
     (m) => m.salon_id === salonId && ROLES[level].includes(m.role),
   );
   if (!membership) return { error: fail("Bu işlem için yetkiniz yok") };
+  if (!membership.is_active) return { error: fail("Hesabınız dondurulmuş; işlem yapılamaz") };
   return { membership };
 }
 
@@ -59,8 +60,10 @@ export function isMissingSchema(error: DbError | null | undefined): boolean {
   );
 }
 
+// Salon kullanıcılarına teknik ayrıntı gösterilmez; eksik güncellemeyi platform
+// yöneticisi /supervisor panelindeki sistem durumundan görür.
 export const MIGRATION_HINT =
-  "Bu özellik için veritabanı güncellemesi gerekiyor (supabase/migrations/20261013000000_business_modules.sql).";
+  "Bu özellik henüz etkinleştirilmedi. Lütfen platform yöneticinizle iletişime geçin.";
 
 /** Veritabanı hatasını kullanıcıya gösterilecek sonuca çevirir. */
 export function dbFailure(scope: string, error: DbError): FormState {

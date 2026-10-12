@@ -27,6 +27,8 @@ export type PanelMembership = {
   salon_slug: string;
   timezone: string;
   currency: string;
+  /** false = platform yöneticisi salonu dondurdu; panel ve randevu sayfası kapalıdır. */
+  is_active: boolean;
   role: MemberRole;
   /** Kullanıcının bu salondaki personel kaydı (randevu alınabilen kişi değilse null). */
   barber_id: string | null;

@@ -62,7 +62,7 @@ export const getPanelContext = cache(async (): Promise<PanelContext | null> => {
   const [members, barbers] = await Promise.all([
     supabase
       .from("salon_members")
-      .select("role, salons (id, name, slug, timezone, currency)")
+      .select("role, salons (id, name, slug, timezone, currency, is_active)")
       .eq("user_id", user.id),
     supabase.from("barbers").select("id, salon_id").eq("user_id", user.id),
   ]);
@@ -71,7 +71,14 @@ export const getPanelContext = cache(async (): Promise<PanelContext | null> => {
 
   type MemberRow = {
     role: MemberRole;
-    salons: { id: string; name: string; slug: string; timezone: string; currency: string };
+    salons: {
+      id: string;
+      name: string;
+      slug: string;
+      timezone: string;
+      currency: string;
+      is_active: boolean;
+    };
   };
   type BarberRow = { id: string; salon_id: string };
 
@@ -87,6 +94,7 @@ export const getPanelContext = cache(async (): Promise<PanelContext | null> => {
       salon_slug: m.salons.slug,
       timezone: m.salons.timezone,
       currency: m.salons.currency,
+      is_active: m.salons.is_active,
       role: m.role,
       barber_id: barberBySalon.get(m.salons.id) ?? null,
     })),

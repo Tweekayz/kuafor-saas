@@ -286,15 +286,22 @@ export async function getBookingRules(salonId: string): Promise<BookingRules | n
   return data;
 }
 
-/** Salonun kendi alan adı. `undefined` = sütun yok (güncelleme uygulanmamış). */
-export async function getCustomDomain(salonId: string): Promise<string | null | undefined> {
+export type CustomDomain = {
+  domain: string | null;
+  /** Süper yönetici onayı: pending / active / rejected; alan adı yoksa null. */
+  status: "pending" | "active" | "rejected" | null;
+};
+
+/** Salonun kendi alan adı ve onay durumu. null = özellik henüz etkin değil (sütunlar yok). */
+export async function getCustomDomain(salonId: string): Promise<CustomDomain | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("salons")
-    .select("custom_domain")
+    .select("custom_domain, custom_domain_status")
     .eq("id", salonId)
     .maybeSingle();
-  if (isMissingSchema(error)) return undefined;
+  if (isMissingSchema(error)) return null;
   check("custom domain", error);
-  return (data as { custom_domain: string | null } | null)?.custom_domain ?? null;
+  const row = data as { custom_domain: string | null; custom_domain_status: CustomDomain["status"] } | null;
+  return { domain: row?.custom_domain ?? null, status: row?.custom_domain_status ?? null };
 }

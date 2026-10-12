@@ -17,6 +17,9 @@ Kuaför ve güzellik salonları için online randevu ve salon yönetimi. Next.js
 | `/panel/stok` | Sahip, yönetici, resepsiyon | Ürün stoğu ve kritik stok uyarıları |
 | `/panel/otomasyon` | Sahip, yönetici | Mesaj şablonları ve kuyruk (gönderim sağlayıcısı bağlı değil) |
 | `/panel/ayarlar` | Sahip, yönetici | Salon bilgileri, randevu kuralları, alan adı; salon oluşturma |
+| `/supervisor` | Süper yönetici | Platform istatistikleri, salon/kullanıcı yönetimi, domain talepleri |
+
+**Süper yönetici:** `/supervisor` yalnızca e-postası `SUPERVISOR_EMAILS` ortam değişkeninde olan, oturum açmış kullanıcıya açılır; başkasına "bulunamadı" döner. Panel veritabanına service role ile eriştiği için her sayfa ve her işlem yetkiyi ayrıca doğrular. Domain onayı `VERCEL_AUTH_TOKEN` + `VERCEL_PROJECT_ID` ile alan adını Vercel projesine ekler. Salon sahipleri paketlerini, dondurulma durumlarını ve domain onayını kendileri değiştiremez (veritabanı tetikleyicisi).
 
 Salona özel adresler: `<slug>.<NEXT_PUBLIC_ROOT_DOMAIN>` ya da salonun kendi alan adı (`salons.custom_domain`) ile gelen ana sayfa isteği `src/proxy.ts` tarafından `/randevu/<slug>` sayfasına yönlendirilir (rewrite). Yerelde `http://<slug>.localhost:3000` ile denenebilir. Canlıda alan adının ayrıca Vercel projesine eklenmesi gerekir (subdomain için wildcard `*.alanadi.com`).
 

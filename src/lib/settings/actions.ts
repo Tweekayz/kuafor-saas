@@ -63,6 +63,7 @@ async function authorize(
     (m) => m.salon_id === salonId && (m.role === "owner" || m.role === "manager"),
   );
   if (!membership) return { error: fail("Bu işlem için yetkiniz yok") };
+  if (!membership.is_active) return { error: fail("Hesabınız dondurulmuş; işlem yapılamaz") };
   return { membership };
 }
 

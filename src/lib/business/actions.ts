@@ -330,7 +330,10 @@ export async function saveBookingRules(_prev: FormState, formData: FormData): Pr
   return doneAndRepublish(auth.membership);
 }
 
-/** Salonun kendi alan adını kaydeder (boş = kaldır). DNS ve Vercel ayarı ayrıca yapılır. */
+/**
+ * Salonun alan adı talebini kaydeder (boş = kaldır). Durum veritabanı
+ * tetikleyicisiyle 'pending' olur; alan adı süper yönetici onaylayınca yayına girer.
+ */
 export async function saveCustomDomain(_prev: FormState, formData: FormData): Promise<FormState> {
   const auth = await authorizeSalon(formData.get("salon_id"), "admin");
   if (auth.error !== undefined) return auth.error;
@@ -344,15 +347,23 @@ export async function saveCustomDomain(_prev: FormState, formData: FormData): Pr
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("salons")
     .update({ custom_domain: domain || null })
-    .eq("id", auth.membership.salon_id);
+    .eq("id", auth.membership.salon_id)
+    .select("custom_domain_status")
+    .maybeSingle();
   if (error) {
     if (error.code === UNIQUE_VIOLATION) return fail("Bu alan adı başka bir salonda kayıtlı");
     return dbFailure("saveCustomDomain", error);
   }
-  return done(domain ? "Alan adı kaydedildi" : "Alan adı kaldırıldı");
+  if (!domain) return done("Alan adı kaldırıldı");
+  // Aynı alan adı yeniden kaydedildiyse mevcut onay korunur.
+  return done(
+    (data as { custom_domain_status: string | null } | null)?.custom_domain_status === "active"
+      ? "Alan adınız zaten onaylı ve aktif"
+      : "Domain bağlantı talebi alındı – onay bekliyor",
+  );
 }
 
 // ---------------------------------------------------------------------------

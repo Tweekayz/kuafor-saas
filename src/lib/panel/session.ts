@@ -7,6 +7,9 @@ import type { PanelContext, PanelMembership } from "./types";
 
 export type PanelQuery = Record<string, string | string[] | undefined>;
 
+/** Dondurulmuş salonun ekibinin yönlendirildiği bilgilendirme sayfası. */
+export const FROZEN_PATH = "/hesap-donduruldu";
+
 export function firstParam(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -31,6 +34,8 @@ export async function requireMembership(
   const slug = firstParam(query.salon);
   const membership =
     context.memberships.find((m) => m.salon_slug === slug) ?? context.memberships[0];
+
+  if (!membership.is_active) redirect(FROZEN_PATH);
 
   return { context, membership, isAdmin: isAdminRole(membership) };
 }
