@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { ThemeToggle } from "@/components/theme";
 import { signOut } from "@/lib/auth/actions";
 import type { PanelMembership } from "@/lib/panel/types";
 
@@ -144,11 +145,14 @@ export function Sidebar({ memberships }: { memberships: PanelMembership[] }) {
             Randevu sayfasını aç ↗
           </Link>
         )}
-        <form action={signOut}>
-          <button type="submit" className="text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400">
-            Çıkış yap
-          </button>
-        </form>
+        <div className="flex items-center justify-between">
+          <form action={signOut}>
+            <button type="submit" className="text-zinc-600 underline-offset-4 hover:underline dark:text-zinc-400">
+              Çıkış yap
+            </button>
+          </form>
+          <ThemeToggle />
+        </div>
       </div>
     </aside>
   );
