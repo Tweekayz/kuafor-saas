@@ -13,7 +13,7 @@ import type {
 /** Randevu + salon saatine göre gün içi dakikaları (sunucuda hesaplanır). */
 export type CalendarAppointment = AgendaItem & { startMin: number; endMin: number };
 
-/** Personel sütunu; workStart/workEnd null ise o gün çalışmıyor. */
+/** Personel şeridi; workStart/workEnd null ise o gün çalışmıyor. */
 export type CalendarColumn = {
   id: string;
   name: string;
@@ -21,9 +21,8 @@ export type CalendarColumn = {
   workEnd: number | null;
 };
 
-const PX_PER_MINUTE = 1.25;
-const DEFAULT_START = 9 * 60;
-const DEFAULT_END = 19 * 60;
+/** Bu süreden kısa boşluklar gösterilmez (gürültü olur, randevu da sığmaz). */
+const MIN_GAP_MINUTES = 30;
 
 const STATUS_LABEL: Record<AppointmentStatus, string> = {
   pending_payment: "Kapora bekleniyor",
@@ -33,13 +32,13 @@ const STATUS_LABEL: Record<AppointmentStatus, string> = {
   no_show: "Gelmedi",
 };
 
-// Durum hem renkle hem etiketle gösterilir; metin her zaman nötr mürekkeptedir.
-const STATUS_STYLE: Record<AppointmentStatus, string> = {
-  pending_payment: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/60",
-  confirmed: "border-l-blue-600 bg-blue-50 dark:bg-blue-950/60",
-  completed: "border-l-emerald-600 bg-emerald-50 dark:bg-emerald-950/60",
-  cancelled: "border-l-zinc-400 bg-zinc-100 dark:bg-zinc-900",
-  no_show: "border-l-red-600 bg-red-50 dark:bg-red-950/60",
+// Durum küçük bir renk noktası + etiketle gösterilir; metin nötr mürekkeptedir.
+const STATUS_DOT: Record<AppointmentStatus, string> = {
+  pending_payment: "bg-amber-500",
+  confirmed: "bg-blue-600",
+  completed: "bg-emerald-600",
+  cancelled: "bg-zinc-400",
+  no_show: "bg-red-600",
 };
 
 type Action = { status: SettableAppointmentStatus; label: string; primary?: boolean };
@@ -64,40 +63,60 @@ function actionsFor(status: AppointmentStatus, canReopen: boolean): Action[] {
   }
 }
 
+type LaneEntry =
+  | { kind: "appointment"; appointment: CalendarAppointment }
+  | { kind: "gap"; start: number; end: number };
+
+/** Randevuları ve aralarındaki (henüz geçmemiş) boşlukları saat sırasıyla dizer. */
+function buildLane(
+  column: CalendarColumn,
+  appointments: CalendarAppointment[],
+  nowMin: number,
+): LaneEntry[] {
+  const entries: LaneEntry[] = [];
+  let cursor = column.workStart;
+
+  const pushGap = (until: number) => {
+    if (cursor === null) return;
+    const start = Math.max(cursor, nowMin);
+    if (until - start >= MIN_GAP_MINUTES) entries.push({ kind: "gap", start, end: until });
+  };
+
+  for (const appointment of appointments) {
+    pushGap(appointment.startMin);
+    entries.push({ kind: "appointment", appointment });
+    if (cursor !== null) cursor = Math.max(cursor, appointment.endMin);
+  }
+  if (column.workEnd !== null) pushGap(column.workEnd);
+
+  return entries;
+}
+
 export function DayCalendar({
   appointments,
   columns,
   currency,
   canReopen,
+  nowMin,
 }: {
   appointments: CalendarAppointment[];
   columns: CalendarColumn[];
   currency: string;
   /** Ön büro (sahip, yönetici, resepsiyon): kapanmış randevuyu geri açabilir. */
   canReopen: boolean;
+  /** Salon saatine göre şu an (dakika). Geçmiş gün için 1440, gelecek gün için -1. */
+  nowMin: number;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [laneFilter, setLaneFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const active = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show");
   const closed = appointments.filter((a) => a.status === "cancelled" || a.status === "no_show");
   const selected = appointments.find((a) => a.appointment_id === selectedId) ?? null;
-
-  // Görünen aralık: mesai saatleri ile randevuların birleşimi, tam saate yuvarlanır.
-  const starts = [
-    ...columns.flatMap((c) => (c.workStart === null ? [] : [c.workStart])),
-    ...active.map((a) => a.startMin),
-  ];
-  const ends = [
-    ...columns.flatMap((c) => (c.workEnd === null ? [] : [c.workEnd])),
-    ...active.map((a) => a.endMin),
-  ];
-  const rangeStart = Math.floor((starts.length ? Math.min(...starts) : DEFAULT_START) / 60) * 60;
-  const rangeEnd = Math.ceil((ends.length ? Math.max(...ends) : DEFAULT_END) / 60) * 60;
-  const height = (rangeEnd - rangeStart) * PX_PER_MINUTE;
-  const hours = Array.from({ length: (rangeEnd - rangeStart) / 60 + 1 }, (_, i) => rangeStart + i * 60);
+  const visibleColumns = laneFilter ? columns.filter((c) => c.id === laneFilter) : columns;
 
   function open(id: string) {
     setError(null);
@@ -123,7 +142,7 @@ export function DayCalendar({
 
   if (columns.length === 0) {
     return (
-      <p className="rounded-xl border border-zinc-200 p-8 text-center text-zinc-500 dark:border-zinc-800">
+      <p className="rounded-2xl border border-zinc-200 p-8 text-center text-zinc-500 dark:border-zinc-800">
         Takvimde gösterilecek personel yok.
       </p>
     );
@@ -131,105 +150,46 @@ export function DayCalendar({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
-        <div className="flex min-w-full border-b border-zinc-200 dark:border-zinc-800">
-          <div className="w-14 shrink-0" />
+      {columns.length > 1 && (
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Personel filtresi">
+          <FilterChip active={laneFilter === null} onClick={() => setLaneFilter(null)}>
+            Tümü <span className="tabular-nums opacity-60">{active.length}</span>
+          </FilterChip>
           {columns.map((column) => (
-            <div
+            <FilterChip
               key={column.id}
-              className="min-w-40 flex-1 border-l border-zinc-200 px-3 py-2 text-sm font-medium dark:border-zinc-800"
+              active={laneFilter === column.id}
+              onClick={() => setLaneFilter(column.id)}
             >
-              {column.name}
-              <span className="ml-2 font-normal text-zinc-500">
+              {column.name}{" "}
+              <span className="tabular-nums opacity-60">
                 {active.filter((a) => a.barber_id === column.id).length}
               </span>
-            </div>
+            </FilterChip>
           ))}
         </div>
-
-        <div className="flex min-w-full" style={{ height }}>
-          <div className="relative w-14 shrink-0" aria-hidden="true">
-            {hours.slice(0, -1).map((minute) => (
-              <span
-                key={minute}
-                className="absolute right-2 text-xs text-zinc-500 tabular-nums"
-                style={{ top: (minute - rangeStart) * PX_PER_MINUTE + 2 }}
-              >
-                {minutesToLabel(minute)}
-              </span>
-            ))}
-          </div>
-
-          {columns.map((column) => (
-            <div
-              key={column.id}
-              className="relative min-w-40 flex-1 border-l border-zinc-200 dark:border-zinc-800"
-            >
-              {hours.slice(1, -1).map((minute) => (
-                <div
-                  key={minute}
-                  aria-hidden="true"
-                  className="absolute inset-x-0 border-t border-zinc-100 dark:border-zinc-900"
-                  style={{ top: (minute - rangeStart) * PX_PER_MINUTE }}
-                />
-              ))}
-
-              {/* Mesai dışı saatler */}
-              {column.workStart === null || column.workEnd === null ? (
-                <div className="absolute inset-0 flex items-start justify-center bg-zinc-100/70 pt-4 text-xs text-zinc-500 dark:bg-zinc-900/70">
-                  Bugün çalışmıyor
-                </div>
-              ) : (
-                <>
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-x-0 top-0 bg-zinc-100/70 dark:bg-zinc-900/70"
-                    style={{ height: (column.workStart - rangeStart) * PX_PER_MINUTE }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-x-0 bottom-0 bg-zinc-100/70 dark:bg-zinc-900/70"
-                    style={{ height: (rangeEnd - column.workEnd) * PX_PER_MINUTE }}
-                  />
-                </>
-              )}
-
-              {active
-                .filter((a) => a.barber_id === column.id)
-                .map((a) => (
-                  <button
-                    key={a.appointment_id}
-                    type="button"
-                    onClick={() => open(a.appointment_id)}
-                    className={`absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-2 py-1 text-left text-xs leading-tight transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-zinc-100 ${STATUS_STYLE[a.status]}`}
-                    style={{
-                      top: (a.startMin - rangeStart) * PX_PER_MINUTE + 1,
-                      height: Math.max((a.endMin - a.startMin) * PX_PER_MINUTE - 2, 22),
-                    }}
-                  >
-                    <span className="block truncate font-medium">
-                      <span className="tabular-nums">{minutesToLabel(a.startMin)}</span>{" "}
-                      {a.customer_name}
-                    </span>
-                    <span className="block truncate text-zinc-600 dark:text-zinc-400">
-                      {a.status !== "confirmed" && `${STATUS_LABEL[a.status]} · `}
-                      {a.services.map((s) => s.name).join(", ")}
-                    </span>
-                  </button>
-                ))}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {active.length === 0 && (
-        <p className="mt-3 text-sm text-zinc-500">Bu gün için aktif randevu yok.</p>
       )}
 
+      <div className="grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(100%,19rem),1fr))]">
+        {visibleColumns.map((column) => (
+          <Lane
+            key={column.id}
+            column={column}
+            appointments={active.filter((a) => a.barber_id === column.id)}
+            currency={currency}
+            nowMin={nowMin}
+            onOpen={open}
+          />
+        ))}
+      </div>
+
       {closed.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-sm font-medium">İptal edilen ve gelinmeyen randevular</h3>
-          <ul className="mt-2 divide-y divide-zinc-100 rounded-xl border border-zinc-200 text-sm dark:divide-zinc-900 dark:border-zinc-800">
+        <details className="mt-6 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
+            İptal edilen ve gelinmeyen randevular{" "}
+            <span className="font-normal text-zinc-500">({closed.length})</span>
+          </summary>
+          <ul className="divide-y divide-zinc-100 border-t border-zinc-200 text-sm dark:divide-zinc-900 dark:border-zinc-800">
             {closed.map((a) => (
               <li key={a.appointment_id}>
                 <button
@@ -240,14 +200,12 @@ export function DayCalendar({
                   <span className="tabular-nums">{minutesToLabel(a.startMin)}</span>
                   <span className="font-medium">{a.customer_name}</span>
                   <span className="text-zinc-500">{a.barber_name}</span>
-                  <span className="ml-auto text-zinc-600 dark:text-zinc-400">
-                    {STATUS_LABEL[a.status]}
-                  </span>
+                  <StatusPill status={a.status} className="ml-auto" />
                 </button>
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       <dialog
@@ -275,7 +233,9 @@ export function DayCalendar({
             </div>
 
             <dl className="mt-4 space-y-2 text-sm">
-              <DetailRow label="Durum">{STATUS_LABEL[selected.status]}</DetailRow>
+              <DetailRow label="Durum">
+                <StatusPill status={selected.status} />
+              </DetailRow>
               <DetailRow label="Saat">
                 {minutesToLabel(selected.startMin)} – {minutesToLabel(selected.endMin)} (
                 {formatDuration(selected.endMin - selected.startMin)})
@@ -337,6 +297,227 @@ export function DayCalendar({
         )}
       </dialog>
     </>
+  );
+}
+
+function Lane({
+  column,
+  appointments,
+  currency,
+  nowMin,
+  onOpen,
+}: {
+  column: CalendarColumn;
+  appointments: CalendarAppointment[];
+  currency: string;
+  nowMin: number;
+  onOpen: (id: string) => void;
+}) {
+  const working = column.workStart !== null && column.workEnd !== null;
+  const entries = buildLane(column, appointments, nowMin);
+  const bookedMinutes = appointments.reduce((sum, a) => sum + (a.endMin - a.startMin), 0);
+  const workMinutes = working ? column.workEnd! - column.workStart! : 0;
+  const occupancy = workMinutes > 0 ? Math.min(100, Math.round((bookedMinutes / workMinutes) * 100)) : 0;
+
+  return (
+    <section
+      aria-label={column.name}
+      className="rounded-2xl border border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40"
+    >
+      <header className="p-4">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-sm font-semibold text-white uppercase dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            {column.name.trim().charAt(0)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate font-semibold">{column.name}</h3>
+            <p className="text-xs text-zinc-500 tabular-nums">
+              {working
+                ? `${minutesToLabel(column.workStart!)} – ${minutesToLabel(column.workEnd!)}`
+                : "Bugün çalışmıyor"}
+            </p>
+          </div>
+          <p className="text-right text-xs text-zinc-500">
+            <span className="block text-lg leading-none font-semibold text-foreground tabular-nums">
+              {appointments.length}
+            </span>
+            randevu
+          </p>
+        </div>
+
+        {working && (
+          <div className="mt-3 flex items-center gap-2">
+            <div
+              role="meter"
+              aria-label="Doluluk"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={occupancy}
+              className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
+            >
+              <div
+                className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                style={{ width: `${occupancy}%` }}
+              />
+            </div>
+            <span className="text-xs text-zinc-500 tabular-nums">%{occupancy} dolu</span>
+          </div>
+        )}
+      </header>
+
+      {entries.length > 0 ? (
+        <ul className="space-y-2 px-3 pb-3">
+          {entries.map((entry) =>
+            entry.kind === "gap" ? (
+              <li
+                key={`gap-${entry.start}`}
+                className="flex items-center justify-between rounded-xl border border-dashed border-zinc-300 px-3 py-1.5 text-xs text-zinc-500 dark:border-zinc-700"
+              >
+                <span className="tabular-nums">
+                  Boş · {minutesToLabel(entry.start)} – {minutesToLabel(entry.end)}
+                </span>
+                <span>{formatDuration(entry.end - entry.start)}</span>
+              </li>
+            ) : (
+              <li key={entry.appointment.appointment_id}>
+                <AppointmentCard
+                  appointment={entry.appointment}
+                  currency={currency}
+                  nowMin={nowMin}
+                  onOpen={onOpen}
+                />
+              </li>
+            ),
+          )}
+        </ul>
+      ) : (
+        <p className="px-4 pb-4 text-sm text-zinc-500">
+          {working ? "Bu gün için randevu yok." : "Randevu alınamaz."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function AppointmentCard({
+  appointment: a,
+  currency,
+  nowMin,
+  onOpen,
+}: {
+  appointment: CalendarAppointment;
+  currency: string;
+  nowMin: number;
+  onOpen: (id: string) => void;
+}) {
+  const services = a.services.map((s) => s.name).join(", ");
+
+  // Biten işler tek satıra iner; dikkat bekleyen ve sıradaki randevulara kalır.
+  if (a.status === "completed") {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen(a.appointment_id)}
+        className="flex w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      >
+        <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${STATUS_DOT.completed}`} />
+        <span className="tabular-nums">{minutesToLabel(a.startMin)}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {a.customer_name} <span className="sr-only">· Tamamlandı</span>
+        </span>
+        <span className="tabular-nums">{formatMoney(a.total_price, currency)}</span>
+      </button>
+    );
+  }
+
+  const inProgress = a.status === "confirmed" && a.startMin <= nowMin && nowMin < a.endMin;
+  const overdue = a.status === "confirmed" && a.endMin <= nowMin;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(a.appointment_id)}
+      className={`flex w-full gap-3 rounded-xl border bg-background p-3 text-left transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-zinc-900 dark:focus-visible:outline-zinc-100 ${
+        inProgress
+          ? "border-blue-600 ring-1 ring-blue-600"
+          : "border-zinc-200 dark:border-zinc-800"
+      }`}
+    >
+      <span className="w-12 shrink-0 tabular-nums">
+        <span className="block font-semibold">{minutesToLabel(a.startMin)}</span>
+        <span className="block text-xs text-zinc-500">{minutesToLabel(a.endMin)}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-2">
+          <span className="truncate font-medium">{a.customer_name}</span>
+          <span className="shrink-0 text-sm tabular-nums">
+            {formatMoney(a.total_price, currency)}
+          </span>
+        </span>
+        <span className="block truncate text-sm text-zinc-500">{services}</span>
+        <span className="mt-2 flex flex-wrap items-center gap-2">
+          {inProgress ? (
+            <Pill dot="bg-blue-600 animate-pulse">Şimdi koltukta</Pill>
+          ) : overdue ? (
+            <Pill dot="bg-amber-500">Kapatılmadı: tamamlandı mı?</Pill>
+          ) : (
+            <StatusPill status={a.status} />
+          )}
+          {a.customer_note && <Pill>Not var</Pill>}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function Pill({
+  dot,
+  className = "",
+  children,
+}: {
+  dot?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:border-zinc-700 dark:text-zinc-300 ${className}`}
+    >
+      {dot && <span aria-hidden="true" className={`size-1.5 rounded-full ${dot}`} />}
+      {children}
+    </span>
+  );
+}
+
+function StatusPill({ status, className }: { status: AppointmentStatus; className?: string }) {
+  return (
+    <Pill dot={STATUS_DOT[status]} className={className}>
+      {STATUS_LABEL[status]}
+    </Pill>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className="shrink-0 rounded-full border border-zinc-300 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-zinc-100 aria-pressed:border-zinc-900 aria-pressed:bg-zinc-900 aria-pressed:text-white dark:border-zinc-700 dark:hover:bg-zinc-800 dark:aria-pressed:border-zinc-100 dark:aria-pressed:bg-zinc-100 dark:aria-pressed:text-zinc-900"
+    >
+      {children}
+    </button>
   );
 }
 

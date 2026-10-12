@@ -98,6 +98,7 @@ async function Overview({ searchParams }: Pick<PageProps<"/panel">, "searchParam
           columns={columns}
           currency={currency}
           canReopen={seesWholeSalon}
+          nowMin={day < today ? 24 * 60 : day > today ? -1 : minutesInZone(new Date(), timezone)}
         />
         {isAdmin && columns.length === 0 && (
           <p className="mt-3 text-sm">

@@ -656,38 +656,39 @@ function ContactRow({
   );
 }
 
-// Hero görseli: salon panelinin temsili, statik bir önizlemesi (örnek veriler).
-const previewColumns = [
+// Hero görseli: salon panelindeki günlük akışın temsili, statik bir önizlemesi
+// (örnek veriler). Görünüm src/app/panel/day-calendar.tsx ile aynı dildedir.
+type PreviewEntry =
+  | { kind: "done"; time: string; name: string; price: string }
+  | { kind: "card"; time: string; end: string; name: string; service: string; price: string; now?: boolean }
+  | { kind: "gap"; label: string };
+
+const previewLanes: { name: string; hours: string; count: number; occupancy: number; entries: PreviewEntry[] }[] = [
   {
     name: "Ahmet",
-    blocks: [
-      { top: 4, height: 22, label: "09:30 Saç kesimi", tone: "done" },
-      { top: 34, height: 30, label: "11:00 Saç + sakal", tone: "booked" },
-      { top: 74, height: 18, label: "14:30 Sakal", tone: "booked" },
+    hours: "09:00 – 19:00",
+    count: 6,
+    occupancy: 70,
+    entries: [
+      { kind: "done", time: "09:30", name: "Kerem A.", price: "₺500" },
+      { kind: "card", time: "11:00", end: "11:45", name: "Burak T.", service: "Saç + sakal", price: "₺750", now: true },
+      { kind: "gap", label: "Boş · 11:45 – 12:30" },
+      { kind: "card", time: "12:30", end: "13:00", name: "Emre K.", service: "Saç kesimi", price: "₺500" },
     ],
   },
   {
     name: "Elif",
-    blocks: [
-      { top: 10, height: 38, label: "10:00 Boya", tone: "done" },
-      { top: 56, height: 24, label: "13:00 Fön", tone: "booked" },
-    ],
-  },
-  {
-    name: "Mert",
-    blocks: [
-      { top: 20, height: 20, label: "10:30 Saç kesimi", tone: "booked" },
-      { top: 48, height: 18, label: "12:30 Sakal", tone: "pending" },
-      { top: 72, height: 22, label: "14:00 Saç kesimi", tone: "booked" },
+    hours: "10:00 – 18:00",
+    count: 4,
+    occupancy: 55,
+    entries: [
+      { kind: "done", time: "10:00", name: "Zeynep D.", price: "₺1.800" },
+      { kind: "gap", label: "Boş · 11:30 – 13:00" },
+      { kind: "card", time: "13:00", end: "13:40", name: "Selin Y.", service: "Fön", price: "₺400" },
+      { kind: "card", time: "14:00", end: "16:00", name: "Ayşe G.", service: "Boya", price: "₺1.800" },
     ],
   },
 ];
-
-const previewTone: Record<string, string> = {
-  done: "border-l-emerald-600 bg-emerald-50 dark:bg-emerald-950/60",
-  booked: "border-l-blue-600 bg-blue-50 dark:bg-blue-950/60",
-  pending: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/60",
-};
 
 function PanelPreview() {
   return (
@@ -705,7 +706,7 @@ function PanelPreview() {
       <div className="mt-4 grid grid-cols-3 gap-2">
         {[
           ["Günün cirosu", "₺8.450"],
-          ["Randevu", "14"],
+          ["Randevu", "10"],
           ["Günün primi", "₺2.110"],
         ].map(([label, value]) => (
           <div key={label} className="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
@@ -715,20 +716,77 @@ function PanelPreview() {
         ))}
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        {previewColumns.map((column) => (
-          <div key={column.name}>
-            <p className="mb-1.5 text-xs font-medium">{column.name}</p>
-            <div className="relative h-64 rounded-xl bg-zinc-50 dark:bg-zinc-900">
-              {column.blocks.map((block) => (
-                <div
-                  key={block.label}
-                  className={`absolute inset-x-1 overflow-hidden rounded-md border-l-4 px-1.5 py-1 text-[10px] leading-tight font-medium ${previewTone[block.tone]}`}
-                  style={{ top: `${block.top}%`, height: `${block.height}%` }}
-                >
-                  {block.label}
-                </div>
-              ))}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {previewLanes.map((lane) => (
+          <div
+            key={lane.name}
+            className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-2.5 dark:border-zinc-800 dark:bg-zinc-900/40"
+          >
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
+                {lane.name.charAt(0)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold">{lane.name}</span>
+                <span className="block text-[10px] text-zinc-500 tabular-nums">{lane.hours}</span>
+              </span>
+              <span className="text-sm font-semibold tabular-nums">{lane.count}</span>
+            </div>
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
+              <div
+                className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                style={{ width: `${lane.occupancy}%` }}
+              />
+            </div>
+
+            <div className="mt-2.5 space-y-1.5">
+              {lane.entries.map((entry) =>
+                entry.kind === "done" ? (
+                  <div
+                    key={entry.time}
+                    className="flex items-center gap-1.5 px-1 text-[10px] text-zinc-500"
+                  >
+                    <span className="size-1.5 rounded-full bg-emerald-600" />
+                    <span className="tabular-nums">{entry.time}</span>
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    <span className="tabular-nums">{entry.price}</span>
+                  </div>
+                ) : entry.kind === "gap" ? (
+                  <div
+                    key={entry.label}
+                    className="rounded-lg border border-dashed border-zinc-300 px-2 py-1 text-[10px] text-zinc-500 tabular-nums dark:border-zinc-700"
+                  >
+                    {entry.label}
+                  </div>
+                ) : (
+                  <div
+                    key={entry.time}
+                    className={`flex gap-2 rounded-lg border bg-background p-2 ${
+                      entry.now
+                        ? "border-blue-600 ring-1 ring-blue-600"
+                        : "border-zinc-200 dark:border-zinc-800"
+                    }`}
+                  >
+                    <span className="shrink-0 tabular-nums">
+                      <span className="block text-[11px] font-semibold">{entry.time}</span>
+                      <span className="block text-[9px] text-zinc-500">{entry.end}</span>
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex justify-between gap-1 text-[11px] font-medium">
+                        <span className="truncate">{entry.name}</span>
+                        <span className="tabular-nums">{entry.price}</span>
+                      </span>
+                      <span className="block truncate text-[10px] text-zinc-500">
+                        {entry.service}
+                      </span>
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-zinc-200 px-1.5 py-px text-[9px] font-medium dark:border-zinc-700">
+                        <span className="size-1 rounded-full bg-blue-600" />
+                        {entry.now ? "Şimdi koltukta" : "Onaylı"}
+                      </span>
+                    </span>
+                  </div>
+                ),
+              )}
             </div>
           </div>
         ))}
